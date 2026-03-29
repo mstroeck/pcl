@@ -1,7 +1,10 @@
 export type Effort = 'S' | 'M' | 'L' | 'XL';
 export type RiskLevel = 'low' | 'medium' | 'high';
 export type Severity = 'low' | 'medium' | 'high' | 'critical';
-export type StepCategory = 'architecture' | 'implementation' | 'testing' | 'infrastructure' | 'design' | 'research';
+export type StepCategory = 'architecture' | 'implementation' | 'testing' | 'infrastructure' | 'design' | 'research' | 'general';
+
+// Single source of truth for step categories (used in schemas and tools)
+export const STEP_CATEGORIES = ['architecture', 'implementation', 'testing', 'infrastructure', 'design', 'research', 'general'] as const;
 
 export interface Step {
   id: string;

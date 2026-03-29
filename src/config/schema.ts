@@ -13,8 +13,8 @@ export const ModelConfigSchema = z.object({
 export const PlanCouncilConfigSchema = z.object({
   models: z.array(ModelConfigSchema),
   depth: z.enum(['high-level', 'detailed', 'implementation']).default('detailed'),
-  consensusThreshold: z.number().min(0).max(1).default(0.5),
   deduplicationThreshold: z.number().min(0).max(1).default(0.7),
+  consensusThreshold: z.number().min(0).max(1).default(0.5),
   timeout: z.number().default(60000),
   maxCost: z.number().optional(),
   github: z.object({

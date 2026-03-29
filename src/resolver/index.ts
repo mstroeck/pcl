@@ -1,5 +1,6 @@
-import { existsSync } from 'fs';
+import { existsSync, realpathSync } from 'fs';
 import { readFile } from 'fs/promises';
+import { resolve as resolvePath, sep as pathSep } from 'path';
 import { PlanInput, ResolverOptions } from './types.js';
 import { parseGitHubReference, resolveGitHubIssue } from './github.js';
 import { resolveFile } from './file.js';
@@ -17,7 +18,10 @@ export async function resolve(target: string, options: ResolverOptions = {}): Pr
   }
 
   // GitHub URL (https://github.com/owner/repo/issues/123)
-  const urlMatch = target.match(/github\.com\/([^/]+)\/([^/]+)\/issues\/(\d+)/);
+  // Design decision: Regex intentionally rejects URLs with extra path segments beyond /issues/123
+  // This ensures we only match direct issue URLs, not comment or other sub-resources
+  // Query strings (?...) and fragments (#...) are allowed via (?:[?#].*)?
+  const urlMatch = target.match(/^https?:\/\/github\.com\/([^/]+)\/([^/]+)\/issues\/(\d+)\/?(?:[?#].*)?$/);
   if (urlMatch) {
     return resolveGitHubIssue(urlMatch[1], urlMatch[2], parseInt(urlMatch[3], 10), options.githubToken);
   }
@@ -32,13 +36,23 @@ export async function resolve(target: string, options: ResolverOptions = {}): Pr
   const issueMatch = target.match(/^#(\d+)$/);
   if (issueMatch && options.repo) {
     const [owner, repo] = options.repo.split('/');
-    if (owner && repo) {
-      return resolveGitHubIssue(owner, repo, parseInt(issueMatch[1], 10), options.githubToken);
+    if (!owner || !repo || options.repo.split('/').length !== 2) {
+      throw new Error(`Invalid repo format "${options.repo}". Expected format: owner/repo`);
     }
+    return resolveGitHubIssue(owner, repo, parseInt(issueMatch[1], 10), options.githubToken);
   }
 
   // File path
   if (existsSync(target)) {
+    // Validate file path is within cwd (prevent path traversal, including symlinks)
+    // Use realpathSync to resolve symlinks before comparison
+    const absolutePath = realpathSync(resolvePath(target));
+    const cwd = realpathSync(process.cwd());
+
+    if (!absolutePath.startsWith(cwd + pathSep) && absolutePath !== cwd) {
+      throw new Error(`File path "${target}" is outside current working directory`);
+    }
+
     return resolveFile(target);
   }
 
@@ -47,6 +61,11 @@ export async function resolve(target: string, options: ResolverOptions = {}): Pr
 }
 
 async function readStdin(): Promise<string> {
+  // Check if stdin is a TTY (interactive terminal)
+  if (process.stdin.isTTY) {
+    throw new Error('No input provided. Pipe data to stdin or provide a target argument.');
+  }
+
   const chunks: Buffer[] = [];
   for await (const chunk of process.stdin) {
     chunks.push(chunk);

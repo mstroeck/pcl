@@ -42,7 +42,7 @@ describe('mergeSteps', () => {
       suggestedOrder: ['step-1'],
     };
 
-    const merged = mergeSteps([plan1, plan2], 0.7);
+    const merged = mergeSteps([plan1, plan2], 0.7, 0.5);
 
     expect(merged).toHaveLength(1);
     expect(merged[0].confidence).toBe(1); // Both models proposed it
@@ -88,7 +88,7 @@ describe('mergeSteps', () => {
       suggestedOrder: ['step-2'],
     };
 
-    const merged = mergeSteps([plan1, plan2], 0.7);
+    const merged = mergeSteps([plan1, plan2], 0.7, 0.5);
 
     expect(merged).toHaveLength(2);
     expect(merged[0].confidence).toBe(0.5);
@@ -130,7 +130,7 @@ describe('mergeDecisions', () => {
       suggestedOrder: [],
     };
 
-    const merged = mergeDecisions([plan1, plan2], 0.7);
+    const merged = mergeDecisions([plan1, plan2], 0.7, 0.5);
 
     expect(merged).toHaveLength(1);
     expect(merged[0].confidence).toBe(1);
@@ -169,7 +169,7 @@ describe('mergeRisks', () => {
       suggestedOrder: [],
     };
 
-    const merged = mergeRisks([plan1, plan2], 0.7);
+    const merged = mergeRisks([plan1, plan2], 0.7, 0.5);
 
     expect(merged).toHaveLength(1);
     expect(merged[0].severity).toBe('critical'); // Should use max severity

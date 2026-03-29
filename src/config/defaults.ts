@@ -24,11 +24,12 @@ export function getDefaultModels(): ModelConfig[] {
   }
 
   // Auto-detect Google (Gemini 2.5 Pro)
-  if (process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY) {
+  const googleApiKey = process.env.GOOGLE_API_KEY?.trim() || process.env.GEMINI_API_KEY?.trim();
+  if (googleApiKey) {
     models.push({
       provider: 'google',
       model: 'gemini-2.5-pro',
-      apiKey: process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY,
+      apiKey: googleApiKey,
       // No maxOutputTokens for thinking models
     });
   }

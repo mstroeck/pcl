@@ -12,9 +12,12 @@ export interface TotalCostEstimate {
   totalCost: number;
 }
 
-// Token estimation heuristic: chars/4
+// Token estimation heuristic: Use Buffer.byteLength for accurate byte count
+// then divide by ~4 (typical tokens are ~4 bytes in UTF-8)
+// NOTE: Buffer.byteLength is Node.js-specific (not portable to browser), which is acceptable for this CLI tool
 export function estimateTokens(text: string): number {
-  return Math.ceil(text.length / 4);
+  const byteLength = Buffer.byteLength(text, 'utf8');
+  return Math.ceil(byteLength / 4);
 }
 
 // Pricing per 1M tokens (as of 2026)

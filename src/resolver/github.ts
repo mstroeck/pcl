@@ -40,7 +40,7 @@ export async function resolveGitHubIssue(
       repo,
       issueNumber,
       url: issue.html_url,
-      labels: issue.labels.map((l) => (typeof l === 'string' ? l : l.name)),
+      labels: issue.labels.map((l) => (typeof l === 'string' ? l : l.name)).filter((name): name is string => name !== undefined),
       state: issue.state,
     },
   };

@@ -12,8 +12,10 @@ export async function loadConfig(overrides?: Partial<PlanCouncilConfig>): Promis
     if (result) {
       config = result.config;
     }
+    // If result is null/undefined, no config file found - this is fine, no warning needed
   } catch (error) {
-    // Config file not found or invalid, use defaults
+    // Only warn on actual parse errors (not missing file)
+    console.error('Warning: Failed to parse config file:', error instanceof Error ? error.message : String(error));
   }
 
   // Merge with overrides
@@ -27,10 +29,19 @@ export async function loadConfig(overrides?: Partial<PlanCouncilConfig>): Promis
   return PlanCouncilConfigSchema.parse(merged);
 }
 
+const VALID_PROVIDERS = ['anthropic', 'openai', 'google', 'openai-compat'] as const;
+
+function isValidProvider(provider: string): provider is 'anthropic' | 'openai' | 'google' | 'openai-compat' {
+  return (VALID_PROVIDERS as readonly string[]).includes(provider);
+}
+
 export function parseModelString(modelString: string): ModelConfig {
   const alias = MODEL_ALIASES[modelString];
 
   if (alias) {
+    if (!isValidProvider(alias.provider)) {
+      throw new Error(`Invalid provider in alias "${modelString}": ${alias.provider}`);
+    }
     return {
       provider: alias.provider as 'anthropic' | 'openai' | 'google' | 'openai-compat',
       model: alias.model,
@@ -40,8 +51,11 @@ export function parseModelString(modelString: string): ModelConfig {
   // Parse provider:model format
   if (modelString.includes(':')) {
     const [provider, model] = modelString.split(':', 2);
+    if (!isValidProvider(provider)) {
+      throw new Error(`Invalid provider "${provider}". Valid providers: ${VALID_PROVIDERS.join(', ')}`);
+    }
     return {
-      provider: provider as 'anthropic' | 'openai' | 'google' | 'openai-compat',
+      provider,
       model,
     };
   }

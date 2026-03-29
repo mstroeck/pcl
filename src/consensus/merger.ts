@@ -4,6 +4,9 @@ import {
   ConsensusDecision,
   ConsensusRisk,
   Severity,
+  Step,
+  Decision,
+  Risk,
 } from './types.js';
 import {
   groupSimilarSteps,
@@ -14,8 +17,8 @@ import {
   RiskGroup,
 } from './deduper.js';
 
-export function mergeSteps(modelPlans: ModelPlan[], threshold: number): ConsensusStep[] {
-  const allSteps: Array<{ step: any; modelName: string }> = [];
+export function mergeSteps(modelPlans: ModelPlan[], threshold: number, consensusThreshold: number): ConsensusStep[] {
+  const allSteps: Array<{ step: Step; modelName: string }> = [];
 
   for (const plan of modelPlans) {
     for (const step of plan.steps) {
@@ -24,8 +27,16 @@ export function mergeSteps(modelPlans: ModelPlan[], threshold: number): Consensu
   }
 
   const groups = groupSimilarSteps(allSteps, threshold);
+  const merged = groups.map((group) => mergeStepGroup(group, modelPlans.length));
+  const filtered = merged.filter((step) => step.confidence >= consensusThreshold);
 
-  return groups.map((group) => mergeStepGroup(group, modelPlans.length));
+  // If threshold filters out all steps, fall back to keeping all steps (with warning comment)
+  // This ensures we never return an empty plan when models did propose steps
+  if (filtered.length === 0 && merged.length > 0) {
+    return merged;
+  }
+
+  return filtered;
 }
 
 function mergeStepGroup(group: StepGroup, totalModels: number): ConsensusStep {
@@ -55,8 +66,8 @@ function mergeStepGroup(group: StepGroup, totalModels: number): ConsensusStep {
   };
 }
 
-export function mergeDecisions(modelPlans: ModelPlan[], threshold: number): ConsensusDecision[] {
-  const allDecisions: Array<{ decision: any; modelName: string }> = [];
+export function mergeDecisions(modelPlans: ModelPlan[], threshold: number, consensusThreshold: number): ConsensusDecision[] {
+  const allDecisions: Array<{ decision: Decision; modelName: string }> = [];
 
   for (const plan of modelPlans) {
     for (const decision of plan.decisions) {
@@ -65,8 +76,15 @@ export function mergeDecisions(modelPlans: ModelPlan[], threshold: number): Cons
   }
 
   const groups = groupSimilarDecisions(allDecisions, threshold);
+  const merged = groups.map((group) => mergeDecisionGroup(group, modelPlans.length));
+  const filtered = merged.filter((decision) => decision.confidence >= consensusThreshold);
 
-  return groups.map((group) => mergeDecisionGroup(group, modelPlans.length));
+  // If threshold filters out all decisions, fall back to keeping all decisions
+  if (filtered.length === 0 && merged.length > 0) {
+    return merged;
+  }
+
+  return filtered;
 }
 
 function mergeDecisionGroup(group: DecisionGroup, totalModels: number): ConsensusDecision {
@@ -87,8 +105,8 @@ function mergeDecisionGroup(group: DecisionGroup, totalModels: number): Consensu
   };
 }
 
-export function mergeRisks(modelPlans: ModelPlan[], threshold: number): ConsensusRisk[] {
-  const allRisks: Array<{ risk: any; modelName: string }> = [];
+export function mergeRisks(modelPlans: ModelPlan[], threshold: number, consensusThreshold: number): ConsensusRisk[] {
+  const allRisks: Array<{ risk: Risk; modelName: string }> = [];
 
   for (const plan of modelPlans) {
     for (const risk of plan.risks) {
@@ -97,8 +115,15 @@ export function mergeRisks(modelPlans: ModelPlan[], threshold: number): Consensu
   }
 
   const groups = groupSimilarRisks(allRisks, threshold);
+  const merged = groups.map((group) => mergeRiskGroup(group, modelPlans.length));
+  const filtered = merged.filter((risk) => risk.confidence >= consensusThreshold);
 
-  return groups.map((group) => mergeRiskGroup(group, modelPlans.length));
+  // If threshold filters out all risks, fall back to keeping all risks
+  if (filtered.length === 0 && merged.length > 0) {
+    return merged;
+  }
+
+  return filtered;
 }
 
 function mergeRiskGroup(group: RiskGroup, totalModels: number): ConsensusRisk {
@@ -137,8 +162,10 @@ function getMaxSeverity(severities: Severity[]): Severity {
 }
 
 export function mergeSuggestedOrder(modelPlans: ModelPlan[]): string[] {
-  // Simple approach: use the first model's order as base
-  // Could be enhanced with voting/consensus later
+  // LIMITATION: Currently uses only the first model's suggested order.
+  // A more robust approach would involve voting or weighted consensus,
+  // but this adds complexity for minimal benefit in most cases.
+  // The first model is typically selected by the user as primary.
   if (modelPlans.length === 0) return [];
   return modelPlans[0].suggestedOrder;
 }

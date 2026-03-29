@@ -3,9 +3,11 @@ import { ConsensusPlan, ModelPlan } from './types.js';
 import { parseModelPlan } from './parser.js';
 import { mergeSteps, mergeDecisions, mergeRisks, mergeSuggestedOrder } from './merger.js';
 import { identifyDisagreements } from './disagreements.js';
+import { clearTokenCache } from './deduper.js';
 
 export interface ConsensusOptions {
   deduplicationThreshold: number;
+  consensusThreshold?: number;
 }
 
 export function buildConsensus(
@@ -40,9 +42,10 @@ export function buildConsensus(
   }
 
   // Merge steps, decisions, risks
-  const steps = mergeSteps(modelPlans, options.deduplicationThreshold);
-  const decisions = mergeDecisions(modelPlans, options.deduplicationThreshold);
-  const risks = mergeRisks(modelPlans, options.deduplicationThreshold);
+  const consensusThreshold = options.consensusThreshold ?? 0.5;
+  const steps = mergeSteps(modelPlans, options.deduplicationThreshold, consensusThreshold);
+  const decisions = mergeDecisions(modelPlans, options.deduplicationThreshold, consensusThreshold);
+  const risks = mergeRisks(modelPlans, options.deduplicationThreshold, consensusThreshold);
 
   // Identify disagreements
   const disagreements = identifyDisagreements(modelPlans, decisions);
@@ -52,6 +55,9 @@ export function buildConsensus(
 
   // Generate summary
   const summary = generateSummary(modelPlans);
+
+  // Clear token cache to prevent memory leak
+  clearTokenCache();
 
   return {
     summary,

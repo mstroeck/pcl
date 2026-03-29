@@ -9,7 +9,22 @@ export async function dispatchToModels(
   request: PlanRequest
 ): Promise<PlanResponse[]> {
   const promises = models.map((modelConfig) => dispatchToModel(modelConfig, request));
-  return Promise.all(promises);
+  const results = await Promise.allSettled(promises);
+
+  return results.map((result, index) => {
+    if (result.status === 'fulfilled') {
+      return result.value;
+    } else {
+      // Convert rejected promise to error response (include provider for clarity)
+      const provider = models[index].provider;
+      const errorMsg = result.reason instanceof Error ? result.reason.message : String(result.reason);
+      return {
+        content: '',
+        model: models[index].model,
+        error: `[${provider}] ${errorMsg}`,
+      };
+    }
+  });
 }
 
 async function dispatchToModel(
@@ -66,6 +81,48 @@ function getApiKeyFromEnv(provider: string): string | undefined {
   }
 }
 
+function isTransientError(error: Error): boolean {
+  // Check if error has a status property (SDK error objects)
+  const errorWithStatus = error as Error & { status?: number };
+
+  if (errorWithStatus.status !== undefined) {
+    const status = errorWithStatus.status;
+    // Retry on rate limits and server errors
+    if (status === 429 || status === 500 || status === 502 || status === 503 || status === 504) {
+      return true;
+    }
+    // Don't retry on client errors
+    if (status === 401 || status === 403 || status === 404) {
+      return false;
+    }
+  }
+
+  // Fall back to string matching if no status property
+  const message = error.message.toLowerCase();
+
+  // Retry on rate limits and server errors (use word boundaries to avoid false positives)
+  if (/\b429\b/.test(message) || message.includes('rate limit')) return true;
+  if (/\b500\b/.test(message) || message.includes('internal server error')) return true;
+  if (/\b502\b/.test(message) || message.includes('bad gateway')) return true;
+  if (/\b503\b/.test(message) || message.includes('service unavailable')) return true;
+  if (/\b504\b/.test(message) || message.includes('gateway timeout')) return true;
+  if (message.includes('timeout')) return true;
+
+  // Retry on common transient network errors
+  if (message.includes('econnreset')) return true;
+  if (message.includes('econnrefused')) return true;
+  if (message.includes('etimedout')) return true;
+  if (message.includes('enotfound')) return true;
+  if (message.includes('eai_again')) return true;
+
+  // Don't retry on authentication or not found errors (use word boundaries)
+  if (/\b401\b/.test(message) || message.includes('unauthorized')) return false;
+  if (/\b403\b/.test(message) || message.includes('forbidden')) return false;
+  if (/\b404\b/.test(message) || message.includes('not found')) return false;
+
+  return false;
+}
+
 async function retryWithBackoff<T>(
   fn: () => Promise<T>,
   maxRetries: number,
@@ -78,6 +135,11 @@ async function retryWithBackoff<T>(
       return await fn();
     } catch (error) {
       lastError = error instanceof Error ? error : new Error(String(error));
+
+      // Only retry transient errors
+      if (!isTransientError(lastError)) {
+        throw lastError;
+      }
 
       if (attempt < maxRetries - 1) {
         const delay = baseDelay * Math.pow(2, attempt);
