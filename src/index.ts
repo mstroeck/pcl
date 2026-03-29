@@ -35,7 +35,7 @@ interface PlanOptions {
   research?: boolean;
   researchProvider?: string;
   researchModel?: string;
-  noCache?: boolean;
+  cache?: boolean; // Commander sets this to false when --no-cache is used
 }
 
 const program = new Command();
@@ -147,7 +147,7 @@ program
           timeout: config.timeout,
         },
         {
-          useCache: !options.noCache,
+          useCache: options.cache !== false,
           cacheTTL: 3600,
         }
       );

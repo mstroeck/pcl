@@ -27,10 +27,11 @@ export function normalizeWeights(weights: ModelWeights): ModelWeights {
 export function calculateWeightedConfidence(
   proposedBy: string[],
   totalModels: number,
-  weights?: ModelWeights
+  weights?: ModelWeights,
+  allModelNames?: string[]
 ): number {
   if (!weights) {
-    return proposedBy.length / totalModels;
+    return totalModels > 0 ? proposedBy.length / totalModels : 0;
   }
 
   const normalizedWeights = normalizeWeights(weights);
@@ -41,20 +42,21 @@ export function calculateWeightedConfidence(
     proposerWeightSum += normalizedWeights[model] || DEFAULT_WEIGHT;
   }
 
-  // Sum total weights
+  // Sum total weights by iterating over ALL models
   let totalWeightSum = 0;
-  // Assume totalModels includes all configured models
-  for (let i = 0; i < totalModels; i++) {
-    // If we don't have weights for all models, use default
-    totalWeightSum += DEFAULT_WEIGHT;
+  if (allModelNames && allModelNames.length > 0) {
+    // Use actual model names if provided
+    for (const modelName of allModelNames) {
+      totalWeightSum += normalizedWeights[modelName] || DEFAULT_WEIGHT;
+    }
+  } else {
+    // Fall back to using totalModels count
+    for (let i = 0; i < totalModels; i++) {
+      totalWeightSum += DEFAULT_WEIGHT;
+    }
   }
 
-  // If weights are provided, recalculate total based on actual model names
-  if (Object.keys(normalizedWeights).length > 0) {
-    totalWeightSum = Object.values(normalizedWeights).reduce((sum, w) => sum + w, 0);
-  }
-
-  return proposerWeightSum / totalWeightSum;
+  return totalWeightSum > 0 ? proposerWeightSum / totalWeightSum : 0;
 }
 
 // Borda count for suggested order merging

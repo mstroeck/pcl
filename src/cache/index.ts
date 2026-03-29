@@ -2,6 +2,7 @@ import { createHash } from 'crypto';
 import { readFile, writeFile, mkdir, readdir, stat, unlink } from 'fs/promises';
 import { join } from 'path';
 import { homedir } from 'os';
+import { z } from 'zod';
 
 export interface CacheEntry<T> {
   key: string;
@@ -9,6 +10,14 @@ export interface CacheEntry<T> {
   timestamp: number;
   ttl: number;
 }
+
+// Zod schema for validating CacheEntry structure (without validating value type)
+const CacheEntrySchema = z.object({
+  key: z.string(),
+  value: z.unknown(),
+  timestamp: z.number(),
+  ttl: z.number(),
+});
 
 export interface CacheConfig {
   ttl: number; // seconds
@@ -19,11 +28,7 @@ const CACHE_DIR = join(homedir(), '.plan-council', 'cache');
 
 // Ensure cache directory exists
 async function ensureCacheDir(): Promise<void> {
-  try {
-    await mkdir(CACHE_DIR, { recursive: true });
-  } catch (error) {
-    // Ignore if directory already exists
-  }
+  await mkdir(CACHE_DIR, { recursive: true });
 }
 
 // Generate SHA-256 hash for cache key
@@ -32,8 +37,16 @@ export function generateCacheKey(...inputs: string[]): string {
   return createHash('sha256').update(combined).digest('hex');
 }
 
+// Validate cache key to prevent path traversal
+function validateCacheKey(key: string): void {
+  if (!/^[a-f0-9]{64}$/.test(key)) {
+    throw new Error('Invalid cache key format. Expected 64-character hex string.');
+  }
+}
+
 // Get cache file path
 function getCachePath(key: string): string {
+  validateCacheKey(key);
   return join(CACHE_DIR, `${key}.json`);
 }
 
@@ -42,11 +55,13 @@ export async function getFromCache<T>(key: string, ttl: number): Promise<T | nul
   try {
     const filePath = getCachePath(key);
     const data = await readFile(filePath, 'utf-8');
-    const entry: CacheEntry<T> = JSON.parse(data);
+    const parsed = JSON.parse(data);
+    const entry = CacheEntrySchema.parse(parsed) as CacheEntry<T>;
 
-    // Check if entry is expired
+    // Check if entry is expired using the entry's TTL, not the parameter
     const age = Date.now() - entry.timestamp;
-    if (age > ttl * 1000) {
+    const effectiveTTL = entry.ttl || ttl;
+    if (age > effectiveTTL * 1000) {
       // Entry expired, delete it
       await unlink(filePath).catch(() => {});
       return null;
@@ -71,7 +86,8 @@ export async function setInCache<T>(key: string, value: T, ttl: number): Promise
   };
 
   const filePath = getCachePath(key);
-  await writeFile(filePath, JSON.stringify(entry, null, 2), 'utf-8');
+  // Use mode 0o600 to ensure cache files are only readable/writable by owner
+  await writeFile(filePath, JSON.stringify(entry, null, 2), { encoding: 'utf-8', mode: 0o600 });
 }
 
 // Clear all cache
@@ -132,7 +148,8 @@ export async function cleanExpiredCache(ttl: number): Promise<number> {
         const filePath = join(CACHE_DIR, file);
         try {
           const data = await readFile(filePath, 'utf-8');
-          const entry: CacheEntry<unknown> = JSON.parse(data);
+          const parsed = JSON.parse(data);
+          const entry = CacheEntrySchema.parse(parsed);
 
           const age = now - entry.timestamp;
           if (age > ttl * 1000) {

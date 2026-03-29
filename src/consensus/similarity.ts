@@ -14,10 +14,10 @@ const STOP_WORDS = new Set([
 
 // Simple stemming - remove common suffixes
 function stem(word: string): string {
-  // Remove common suffixes
-  if (word.endsWith('ing')) return word.slice(0, -3);
-  if (word.endsWith('ed')) return word.slice(0, -2);
-  if (word.endsWith('s') && word.length > 3) return word.slice(0, -1);
+  // Remove common suffixes with length checks to avoid over-stemming
+  if (word.length > 4 && word.endsWith('ing')) return word.slice(0, -3);
+  if (word.length > 4 && word.endsWith('ed')) return word.slice(0, -2);
+  if (word.length > 3 && word.endsWith('s')) return word.slice(0, -1);
   return word;
 }
 

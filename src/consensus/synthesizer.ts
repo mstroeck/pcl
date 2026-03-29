@@ -2,6 +2,7 @@
  * LLM meta-synthesis - use one model to review and improve the mechanical consensus
  */
 
+import { z } from 'zod';
 import { ConsensusPlan } from './types.js';
 import { ModelConfig } from '../config/schema.js';
 import { dispatchToModels } from '../dispatch/runner.js';
@@ -31,6 +32,15 @@ export interface SynthesisResult {
   improvedSummary: string;
   recommendations: string[];
 }
+
+// Zod schema for validating SynthesisResult
+const SynthesisResultSchema = z.object({
+  coherenceIssues: z.array(z.string()),
+  gaps: z.array(z.string()),
+  dependencyIssues: z.array(z.string()),
+  improvedSummary: z.string(),
+  recommendations: z.array(z.string()),
+});
 
 export async function synthesizePlan(
   plan: ConsensusPlan,
@@ -83,7 +93,8 @@ export async function synthesizePlan(
       return null;
     }
 
-    const result: SynthesisResult = JSON.parse(jsonMatch[0]);
+    const parsed = JSON.parse(jsonMatch[0]);
+    const result = SynthesisResultSchema.parse(parsed);
     return result;
   } catch (error) {
     return null;

@@ -39,10 +39,11 @@ async function dispatchToModel(
   const useCache = options?.useCache ?? true;
   const cacheTTL = options?.cacheTTL ?? 3600; // 1 hour default
 
-  // Generate cache key from request + model config
+  // Generate cache key from request + model config (including provider)
   const cacheKey = generateCacheKey(
     request.systemPrompt,
     request.userPrompt,
+    modelConfig.provider,
     modelConfig.model,
     JSON.stringify({
       maxTokens: modelConfig.maxTokens,

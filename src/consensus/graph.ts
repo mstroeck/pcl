@@ -25,7 +25,7 @@ export function detectCycles(steps: ConsensusStep[]): string[][] {
     const neighbors = graph.get(nodeId) || [];
     for (const neighbor of neighbors) {
       if (!visited.has(neighbor)) {
-        dfs(neighbor, [...path]);
+        dfs(neighbor, path);
       } else if (recursionStack.has(neighbor)) {
         // Found a cycle
         const cycleStart = path.indexOf(neighbor);
@@ -36,6 +36,7 @@ export function detectCycles(steps: ConsensusStep[]): string[][] {
     }
 
     recursionStack.delete(nodeId);
+    path.pop(); // Pop the node after processing all neighbors
   }
 
   for (const step of steps) {
