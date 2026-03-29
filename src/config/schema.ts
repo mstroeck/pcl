@@ -20,6 +20,10 @@ export const ResearchConfigSchema = z.object({
   apiKey: z.string().optional(),
 });
 
+export const ConsensusConfigSchema = z.object({
+  similarity: z.enum(['jaccard', 'tfidf', 'hybrid']).default('hybrid'),
+});
+
 export const PlanCouncilConfigSchema = z.object({
   models: z.array(ModelConfigSchema),
   depth: z.enum(['high-level', 'detailed', 'implementation']).default('detailed'),
@@ -31,8 +35,10 @@ export const PlanCouncilConfigSchema = z.object({
     token: z.string().optional(),
   }).optional(),
   research: ResearchConfigSchema.optional(),
+  consensus: ConsensusConfigSchema.optional(),
 });
 
 export type ModelConfig = z.infer<typeof ModelConfigSchema>;
 export type ResearchConfig = z.infer<typeof ResearchConfigSchema>;
+export type ConsensusConfig = z.infer<typeof ConsensusConfigSchema>;
 export type PlanCouncilConfig = z.infer<typeof PlanCouncilConfigSchema>;
