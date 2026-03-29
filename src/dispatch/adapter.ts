@@ -15,6 +15,7 @@ export interface PlanResponse {
     totalTokens: number;
   };
   error?: string;
+  cached?: boolean;
 }
 
 export interface ModelAdapter {

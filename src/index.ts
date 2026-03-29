@@ -35,6 +35,7 @@ interface PlanOptions {
   research?: boolean;
   researchProvider?: string;
   researchModel?: string;
+  noCache?: boolean;
 }
 
 const program = new Command();
@@ -63,6 +64,7 @@ program
   .option('--research', 'Enable domain research (opt-in, adds cost and latency)')
   .option('--research-provider <provider>', 'Research provider to use (perplexity, openai-compat)')
   .option('--research-model <model>', 'Model to use for research')
+  .option('--no-cache', 'Disable response caching')
   .action(async (target: string, options: PlanOptions) => {
     try {
       const spinner = ora('Loading configuration...').start();
@@ -137,11 +139,26 @@ program
       spinner.text = `Dispatching to ${config.models.length} model(s)...`;
 
       // Dispatch to models
-      const responses = await dispatchToModels(config.models, {
-        systemPrompt,
-        userPrompt,
-        timeout: config.timeout,
-      });
+      const responses = await dispatchToModels(
+        config.models,
+        {
+          systemPrompt,
+          userPrompt,
+          timeout: config.timeout,
+        },
+        {
+          useCache: !options.noCache,
+          cacheTTL: 3600,
+        }
+      );
+
+      // Show cache status if verbose
+      if (options.verbose) {
+        const cachedCount = responses.filter((r) => r.cached).length;
+        if (cachedCount > 0) {
+          console.log(`\n[Cache: ${cachedCount}/${responses.length} responses from cache]\n`);
+        }
+      }
 
       spinner.text = 'Building consensus...';
 
@@ -217,6 +234,33 @@ program
       spinner.succeed('Created .plan-councilrc.json');
       console.log('\nEdit the file to customize your configuration.');
       console.log('Models will be auto-detected from your API keys (ANTHROPIC_API_KEY, OPENAI_API_KEY, GOOGLE_API_KEY).');
+    } catch (error) {
+      console.error('Error:', error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+  });
+
+program
+  .command('cache')
+  .description('Manage response cache')
+  .argument('[action]', 'Action to perform: clear, stats', 'stats')
+  .action(async (action: string) => {
+    try {
+      const { clearCache, getCacheStats } = await import('./cache/index.js');
+
+      if (action === 'clear') {
+        const spinner = ora('Clearing cache...').start();
+        const cleared = await clearCache();
+        spinner.succeed(`Cleared ${cleared} cached response(s)`);
+      } else if (action === 'stats') {
+        const stats = await getCacheStats();
+        console.log('\nCache Statistics:');
+        console.log(`  Files: ${stats.files}`);
+        console.log(`  Size: ${(stats.size / 1024).toFixed(2)} KB`);
+      } else {
+        console.error(`Unknown action: ${action}. Use 'clear' or 'stats'.`);
+        process.exit(1);
+      }
     } catch (error) {
       console.error('Error:', error instanceof Error ? error.message : String(error));
       process.exit(1);
