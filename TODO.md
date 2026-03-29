@@ -32,7 +32,7 @@
 - [ ] Config schema: add `research` section
   ```
   research: {
-    enabled: true,          // --no-research to disable
+    enabled: false,         // --research to enable (opt-in)
     provider: 'perplexity', // or 'openai-compat', or custom
     model: 'sonar-deep-research',
     maxTokens: 4096,        // budget for research output
@@ -41,7 +41,7 @@
     apiKey?: string,        // override env var
   }
   ```
-- [ ] CLI flags: `--research` (default on), `--no-research`, `--research-provider <provider>`, `--research-model <model>`
+- [ ] CLI flags: `--research` (opt-in, off by default — slow and expensive), `--research-provider <provider>`, `--research-model <model>`
 - [ ] Cache research results (same query hash = cached response)
 - [ ] Tests: mock Perplexity API, verify research injection, verify --no-research skips
 - [ ] Cost estimation: include research cost in `--estimate` output

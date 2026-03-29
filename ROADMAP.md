@@ -28,7 +28,8 @@ pcl v0.1 proves multi-model consensus planning works. v0.2 makes it **smart, gro
 - Default provider: Perplexity Sonar (`sonar-deep-research`) — configurable via `research.provider` in config
 - Research query synthesized from: task description, GitHub issue context, file content
 - Research output injected into planning prompt as grounding context
-- Configurable: `--research` (on by default), `--no-research` to skip, `--research-provider <provider>`
+- **Opt-in**: `--research` flag to enable (off by default — it's slow and expensive)
+- `--research-provider <provider>`, `--research-model <model>` for customization
 - Support multiple research providers: Perplexity Sonar, Tavily, Google Search API, or any OpenAI-compatible endpoint
 - Token budget management — truncate research to fit within model context limits
 - Cache research results (same input = same research, configurable TTL)
@@ -147,7 +148,7 @@ pcl v0.1 proves multi-model consensus planning works. v0.2 makes it **smart, gro
 
 | Decision | Choice | Rationale |
 |----------|--------|-----------|
-| Research provider | Perplexity Sonar default, configurable | Best deep research quality, but users should choose |
+| Research provider | Perplexity Sonar default, opt-in via `--research` | Slow and expensive — only when user explicitly wants it |
 | Similarity algorithm | Hybrid (Jaccard + TF-IDF) | No external deps, major quality upgrade |
 | Meta-synthesis | Opt-in (`--synthesize`) | Adds cost/latency, make default in v0.3 after feedback |
 | Plugin system | Interface-based, config-discovered | Simple, no complex lifecycle |
@@ -161,7 +162,7 @@ pcl v0.1 proves multi-model consensus planning works. v0.2 makes it **smart, gro
 | Risk | Severity | Mitigation |
 |------|----------|------------|
 | Scope creep delays release | HIGH | Strict P0 gate — ship Phase 1 first |
-| Research adds latency/cost | MEDIUM | Cache results, `--no-research` escape hatch |
+| Research adds latency/cost | LOW | Opt-in only, cached when used |
 | Consensus changes degrade quality | HIGH | Build eval harness, benchmark before shipping |
 | Context enrichment leaks secrets | CRITICAL | Secret detection, `.plan-council-ignore`, review mode |
 | Plugin supply chain risks | MEDIUM | Sandbox execution, first-party only initially |
