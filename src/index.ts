@@ -8,6 +8,7 @@ import { resolve } from './resolver/index.js';
 import { BASE_SYSTEM_PROMPT } from './prompts/base.js';
 import { getDepthPrompt } from './prompts/depth.js';
 import { dispatchToModels } from './dispatch/runner.js';
+import { dispatchToModelsStreaming } from './dispatch/streaming.js';
 import { buildConsensus } from './consensus/index.js';
 import { formatTerminal } from './output/terminal.js';
 import { formatMarkdown } from './output/markdown.js';
@@ -140,10 +141,24 @@ program
         process.exit(1);
       }
 
+      // Determine output format early for streaming display
+      let format: 'terminal' | 'markdown' | 'json' | 'mermaid' | 'html' = 'terminal';
+      if (options.outputFormat) {
+        format = options.outputFormat;
+      } else if (options.json) {
+        format = 'json';
+      } else if (options.markdown) {
+        format = 'markdown';
+      }
+
       spinner.text = `Dispatching to ${config.models.length} model(s)...`;
 
-      // Dispatch to models
-      const responses = await dispatchToModels(
+      // Track streaming progress
+      const completedModels: string[] = [];
+      let currentCost = 0;
+
+      // Dispatch to models with streaming
+      const responses = await dispatchToModelsStreaming(
         config.models,
         {
           systemPrompt,
@@ -153,6 +168,25 @@ program
         {
           useCache: options.cache !== false,
           cacheTTL: 3600,
+          onModelComplete: (response, timingMs) => {
+            completedModels.push(response.model);
+            const timingSec = (timingMs / 1000).toFixed(1);
+
+            // Update spinner with progress
+            spinner.text = `${completedModels.length}/${config.models.length} models complete • ${response.model} (${timingSec}s)`;
+
+            // Show individual completion in terminal format
+            if (format === 'terminal' && !response.error) {
+              spinner.stopAndPersist({
+                symbol: '✓',
+                text: `${response.model} completed in ${timingSec}s${response.cached ? ' (cached)' : ''}`,
+              });
+              spinner.start();
+            }
+          },
+          onCostUpdate: (current, total) => {
+            currentCost = current;
+          },
         }
       );
 
@@ -174,16 +208,8 @@ program
 
       spinner.succeed('Plan created successfully!');
 
-      // Determine output format
-      let format: 'terminal' | 'markdown' | 'json' | 'mermaid' | 'html' = 'terminal';
-
-      if (options.outputFormat) {
-        format = options.outputFormat;
-      } else if (options.json) {
-        format = 'json';
-      } else if (options.markdown) {
-        format = 'markdown';
-      }
+      // Show final cost summary
+      console.log(`\nEstimated cost: $${currentCost.toFixed(4)}`);
 
       // Format output
       let output: string;

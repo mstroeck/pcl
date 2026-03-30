@@ -96,13 +96,13 @@ describe('output/formatters', () => {
     it('should format JSON output with version', () => {
       const output = formatJSON(mockPlan);
       const parsed = JSON.parse(output);
-      expect(parsed.version).toBeDefined();
+      expect(parsed.version).toBe('1.0.0');
       expect(parsed.generatedAt).toBeDefined();
+      expect(typeof parsed.generatedAt).toBe('string');
       expect(parsed.plan.summary).toBe('Test plan summary');
       expect(parsed.plan.steps).toHaveLength(1);
       expect(parsed.plan.decisions).toHaveLength(1);
       expect(parsed.plan.risks).toHaveLength(1);
-      expect(output).toMatchSnapshot();
     });
   });
 
