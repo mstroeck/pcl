@@ -12,6 +12,8 @@ import { buildConsensus } from './consensus/index.js';
 import { formatTerminal } from './output/terminal.js';
 import { formatMarkdown } from './output/markdown.js';
 import { formatJSON } from './output/json.js';
+import { formatMermaid } from './output/mermaid.js';
+import { formatHTML } from './output/html.js';
 import { postToGitHub } from './output/github.js';
 import { estimateCost, formatCostEstimate } from './cost/estimator.js';
 import { PlanCouncilConfig, ResearchConfig } from './config/schema.js';
@@ -24,6 +26,7 @@ interface PlanOptions {
   depth?: DepthLevel;
   json?: boolean;
   markdown?: boolean;
+  outputFormat?: 'terminal' | 'markdown' | 'json' | 'mermaid' | 'html';
   output?: string;
   post?: boolean;
   githubToken?: string;
@@ -51,8 +54,9 @@ program
   .option('--models <models>', 'Comma-separated models to use')
   .option('--context <text>', 'Additional codebase/project context')
   .option('--depth <level>', 'Planning depth: high-level | detailed | implementation', 'detailed')
-  .option('--json', 'Output as JSON')
-  .option('--markdown', 'Output as Markdown')
+  .option('--json', 'Output as JSON (legacy, use --output-format json)')
+  .option('--markdown', 'Output as Markdown (legacy, use --output-format markdown)')
+  .option('--output-format <format>', 'Output format: terminal | markdown | json | mermaid | html')
   .option('--output <file>', 'Write output to file')
   .option('--post', 'Post as GitHub issue comment')
   .option('--github-token <token>', 'GitHub token')
@@ -170,15 +174,37 @@ program
 
       spinner.succeed('Plan created successfully!');
 
+      // Determine output format
+      let format: 'terminal' | 'markdown' | 'json' | 'mermaid' | 'html' = 'terminal';
+
+      if (options.outputFormat) {
+        format = options.outputFormat;
+      } else if (options.json) {
+        format = 'json';
+      } else if (options.markdown) {
+        format = 'markdown';
+      }
+
       // Format output
       let output: string;
 
-      if (options.json) {
-        output = formatJSON(consensusPlan);
-      } else if (options.markdown) {
-        output = formatMarkdown(consensusPlan, options.verbose);
-      } else {
-        output = formatTerminal(consensusPlan, options.verbose);
+      switch (format) {
+        case 'json':
+          output = formatJSON(consensusPlan);
+          break;
+        case 'markdown':
+          output = formatMarkdown(consensusPlan, options.verbose);
+          break;
+        case 'mermaid':
+          output = formatMermaid(consensusPlan);
+          break;
+        case 'html':
+          output = formatHTML(consensusPlan, options.verbose);
+          break;
+        case 'terminal':
+        default:
+          output = formatTerminal(consensusPlan, options.verbose);
+          break;
       }
 
       // Output

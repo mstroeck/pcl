@@ -1,72 +1,76 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
-exports[`output/formatters > formatJSON > should format JSON output 1`] = `
+exports[`output/formatters > formatJSON > should format JSON output with version 1`] = `
 "{
-  "summary": "Test plan summary",
-  "steps": [
-    {
-      "id": "step-1",
-      "title": "Setup database",
-      "description": "Configure PostgreSQL",
-      "effort": "M",
-      "risk": "low",
-      "dependencies": [],
-      "category": "infrastructure",
-      "confidence": 1,
-      "proposedBy": [
-        "model-a"
-      ],
-      "variations": [
-        {
-          "modelName": "model-a",
-          "description": "Configure PostgreSQL"
-        }
-      ]
-    }
-  ],
-  "decisions": [
-    {
-      "question": "Which framework?",
-      "recommendation": "React",
-      "reasoning": "Popular and well-supported",
-      "alternatives": [
-        "Vue",
-        "Angular"
-      ],
-      "confidence": 0.67,
-      "proposedBy": [
-        "model-a",
-        "model-b"
-      ],
-      "alternativesByModel": {
-        "model-a": [
-          "Vue"
+  "version": "1.0.0",
+  "generatedAt": "2026-03-30T09:56:18.170Z",
+  "plan": {
+    "summary": "Test plan summary",
+    "steps": [
+      {
+        "id": "step-1",
+        "title": "Setup database",
+        "description": "Configure PostgreSQL",
+        "effort": "M",
+        "risk": "low",
+        "dependencies": [],
+        "category": "infrastructure",
+        "confidence": 1,
+        "proposedBy": [
+          "model-a"
         ],
-        "model-b": [
-          "Angular"
+        "variations": [
+          {
+            "modelName": "model-a",
+            "description": "Configure PostgreSQL"
+          }
         ]
       }
-    }
-  ],
-  "risks": [
-    {
-      "description": "Data loss during migration",
-      "severity": "high",
-      "mitigation": "Backup before migration",
-      "confidence": 1,
-      "proposedBy": [
-        "model-a"
-      ],
-      "severityByModel": {
-        "model-a": "high"
+    ],
+    "decisions": [
+      {
+        "question": "Which framework?",
+        "recommendation": "React",
+        "reasoning": "Popular and well-supported",
+        "alternatives": [
+          "Vue",
+          "Angular"
+        ],
+        "confidence": 0.67,
+        "proposedBy": [
+          "model-a",
+          "model-b"
+        ],
+        "alternativesByModel": {
+          "model-a": [
+            "Vue"
+          ],
+          "model-b": [
+            "Angular"
+          ]
+        }
       }
-    }
-  ],
-  "disagreements": [],
-  "suggestedOrder": [
-    "step-1"
-  ],
-  "modelPlans": []
+    ],
+    "risks": [
+      {
+        "description": "Data loss during migration",
+        "severity": "high",
+        "mitigation": "Backup before migration",
+        "confidence": 1,
+        "proposedBy": [
+          "model-a"
+        ],
+        "severityByModel": {
+          "model-a": "high"
+        }
+      }
+    ],
+    "disagreements": [],
+    "suggestedOrder": [
+      "step-1"
+    ],
+    "modelPlans": []
+  }
 }"
 `;
 
