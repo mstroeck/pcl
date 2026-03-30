@@ -20,6 +20,9 @@ import { estimateCost, formatCostEstimate } from './cost/estimator.js';
 import { PlanCouncilConfig, ResearchConfig } from './config/schema.js';
 import { DepthLevel } from './prompts/depth.js';
 import { conductResearch, formatResearchForPrompt } from './research/index.js';
+import { runDoctor } from './cli/doctor.js';
+import { showConfig, getProfile } from './cli/config.js';
+import { generateBashCompletions, generateZshCompletions, generateFishCompletions } from './cli/completions.js';
 
 interface PlanOptions {
   models?: string;
@@ -40,6 +43,7 @@ interface PlanOptions {
   researchProvider?: string;
   researchModel?: string;
   cache?: boolean; // Commander sets this to false when --no-cache is used
+  profile?: 'fast' | 'thorough';
 }
 
 const program = new Command();
@@ -70,11 +74,14 @@ program
   .option('--research-provider <provider>', 'Research provider to use (perplexity, openai-compat)')
   .option('--research-model <model>', 'Model to use for research')
   .option('--no-cache', 'Disable response caching')
+  .option('--profile <profile>', 'Config profile: fast (cheap models) or thorough (expensive models)')
   .action(async (target: string, options: PlanOptions) => {
     try {
       const spinner = ora('Loading configuration...').start();
 
-      // Load config
+      // Load config with profile if specified
+      const profileConfig = options.profile ? getProfile(options.profile) : undefined;
+
       const researchOverride = options.research
         ? ({
             enabled: true,
@@ -86,14 +93,15 @@ program
         : undefined;
 
       const config = await loadConfig({
-        models: options.models ? parseModelsOption(options.models) : undefined,
-        depth: options.depth,
-        timeout: options.timeout ? options.timeout * 1000 : undefined,
-        maxCost: options.maxCost,
+        ...profileConfig,
+        models: options.models ? parseModelsOption(options.models) : profileConfig?.models,
+        depth: options.depth || profileConfig?.depth,
+        timeout: options.timeout ? options.timeout * 1000 : profileConfig?.timeout,
+        maxCost: options.maxCost || profileConfig?.maxCost,
         github: (options.githubToken || process.env.GITHUB_TOKEN) ? {
           token: options.githubToken || process.env.GITHUB_TOKEN,
         } : undefined,
-        research: researchOverride,
+        research: researchOverride || profileConfig?.research,
       });
 
       spinner.text = 'Resolving input...';
@@ -313,6 +321,59 @@ program
         console.error(`Unknown action: ${action}. Use 'clear' or 'stats'.`);
         process.exit(1);
       }
+    } catch (error) {
+      console.error('Error:', error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+  });
+
+program
+  .command('doctor')
+  .description('Validate API keys and test provider connectivity')
+  .action(async () => {
+    try {
+      await runDoctor();
+    } catch (error) {
+      console.error('Error:', error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+  });
+
+program
+  .command('config')
+  .description('Show resolved configuration')
+  .action(async () => {
+    try {
+      await showConfig();
+    } catch (error) {
+      console.error('Error:', error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+  });
+
+program
+  .command('completions <shell>')
+  .description('Generate shell completions (bash, zsh, fish)')
+  .action(async (shell: string) => {
+    try {
+      let completions: string;
+
+      switch (shell.toLowerCase()) {
+        case 'bash':
+          completions = generateBashCompletions();
+          break;
+        case 'zsh':
+          completions = generateZshCompletions();
+          break;
+        case 'fish':
+          completions = generateFishCompletions();
+          break;
+        default:
+          console.error(`Unsupported shell: ${shell}. Use bash, zsh, or fish.`);
+          process.exit(1);
+      }
+
+      console.log(completions);
     } catch (error) {
       console.error('Error:', error instanceof Error ? error.message : String(error));
       process.exit(1);
