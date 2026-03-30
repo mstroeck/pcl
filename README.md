@@ -168,12 +168,51 @@ pcl plan "Add feature" --json --output plan.json
 
 ## GitHub Integration
 
+### CLI
+
 Post plans directly to issues:
 
 ```bash
 # Fetch issue and post plan as comment
 pcl plan owner/repo#42 --post --github-token $GITHUB_TOKEN
 ```
+
+### GitHub Action
+
+Automatically generate plans for new issues or when issues are labeled:
+
+```yaml
+name: Auto-Plan Issues
+
+on:
+  issues:
+    types: [opened, labeled]
+
+jobs:
+  plan:
+    if: contains(github.event.issue.labels.*.name, 'plan')
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      contents: read
+    steps:
+      - uses: mstroeck/pcl@main
+        with:
+          issue-number: ${{ github.event.issue.number }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
+          openai-api-key: ${{ secrets.OPENAI_API_KEY }}
+          google-api-key: ${{ secrets.GOOGLE_API_KEY }}
+          max-cost: '0.50'  # Cost guardrail
+```
+
+**Features:**
+- ✅ Cost estimation before running (fails if over budget)
+- ✅ Automatic secrets masking in logs
+- ✅ Configurable triggers (opened, labeled)
+- ✅ Supports all CLI options (models, depth, research, etc.)
+
+See [.github/workflows/plan.yml](.github/workflows/plan.yml) for a complete example.
 
 ## Cost Management
 

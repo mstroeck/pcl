@@ -1,0 +1,47 @@
+name: Auto-Plan Issues
+
+on:
+  issues:
+    types: [opened, labeled]
+
+jobs:
+  plan:
+    # Only run when issue is labeled with 'plan' or on issue creation (configurable)
+    if: contains(github.event.issue.labels.*.name, 'plan') || github.event.action == 'opened'
+    runs-on: ubuntu-latest
+
+    permissions:
+      issues: write  # Required to post comments
+      contents: read
+
+    steps:
+      - name: Generate plan with Plan Council
+        uses: mstroeck/pcl@main  # Replace with your fork if needed
+        with:
+          issue-number: ${{ github.event.issue.number }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+          # Model configuration (optional - defaults to auto-detection)
+          models: 'claude-3-7-sonnet,gpt-4o,gemini-2.0-flash-thinking-exp'
+
+          # Planning depth (optional - default: detailed)
+          depth: 'detailed'
+
+          # Cost guardrails (optional - fails if estimate exceeds this)
+          max-cost: '0.50'  # $0.50 USD
+
+          # API keys from secrets
+          anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
+          openai-api-key: ${{ secrets.OPENAI_API_KEY }}
+          google-api-key: ${{ secrets.GOOGLE_API_KEY }}
+
+          # Domain research (optional - opt-in, adds cost)
+          # research: 'true'
+          # research-provider: 'perplexity'
+          # perplexity-api-key: ${{ secrets.PERPLEXITY_API_KEY }}
+
+      - name: Summary
+        if: success()
+        run: |
+          echo "✅ Plan generated and posted to issue #${{ github.event.issue.number }}"
+          echo "Estimated cost: \$${{ steps.plan.outputs.estimated-cost }}"

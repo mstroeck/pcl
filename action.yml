@@ -1,0 +1,174 @@
+name: 'Plan Council'
+description: 'Multi-model AI planning tool with consensus voting for GitHub issues'
+branding:
+  icon: 'users'
+  color: 'blue'
+
+inputs:
+  issue-number:
+    description: 'GitHub issue number to plan for'
+    required: true
+  models:
+    description: 'Comma-separated models to use (e.g., claude-3-7-sonnet,gpt-4o,gemini-2.0-flash-thinking-exp)'
+    required: false
+  depth:
+    description: 'Planning depth: high-level | detailed | implementation'
+    required: false
+    default: 'detailed'
+  max-cost:
+    description: 'Maximum cost budget in USD (action fails if estimate exceeds this)'
+    required: false
+  research:
+    description: 'Enable domain research (opt-in, adds cost and latency)'
+    required: false
+    default: 'false'
+  research-provider:
+    description: 'Research provider to use (perplexity, openai-compat)'
+    required: false
+  research-model:
+    description: 'Model to use for research'
+    required: false
+  anthropic-api-key:
+    description: 'Anthropic API key'
+    required: false
+  openai-api-key:
+    description: 'OpenAI API key'
+    required: false
+  google-api-key:
+    description: 'Google API key'
+    required: false
+  perplexity-api-key:
+    description: 'Perplexity API key (for research)'
+    required: false
+  github-token:
+    description: 'GitHub token for posting comments'
+    required: true
+
+outputs:
+  plan-summary:
+    description: 'Summary of the generated plan'
+  estimated-cost:
+    description: 'Estimated cost of the planning operation in USD'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+
+    - name: Install Plan Council
+      shell: bash
+      run: |
+        npm install -g plan-council
+
+    - name: Set API keys
+      shell: bash
+      run: |
+        if [ -n "${{ inputs.anthropic-api-key }}" ]; then
+          echo "ANTHROPIC_API_KEY=${{ inputs.anthropic-api-key }}" >> $GITHUB_ENV
+        fi
+        if [ -n "${{ inputs.openai-api-key }}" ]; then
+          echo "OPENAI_API_KEY=${{ inputs.openai-api-key }}" >> $GITHUB_ENV
+        fi
+        if [ -n "${{ inputs.google-api-key }}" ]; then
+          echo "GOOGLE_API_KEY=${{ inputs.google-api-key }}" >> $GITHUB_ENV
+        fi
+        if [ -n "${{ inputs.perplexity-api-key }}" ]; then
+          echo "PERPLEXITY_API_KEY=${{ inputs.perplexity-api-key }}" >> $GITHUB_ENV
+        fi
+
+    - name: Mask secrets in logs
+      shell: bash
+      run: |
+        echo "::add-mask::${{ inputs.anthropic-api-key }}"
+        echo "::add-mask::${{ inputs.openai-api-key }}"
+        echo "::add-mask::${{ inputs.google-api-key }}"
+        echo "::add-mask::${{ inputs.perplexity-api-key }}"
+
+    - name: Estimate cost
+      id: estimate
+      shell: bash
+      run: |
+        ESTIMATE_CMD="pcl plan ${{ github.repository }}#${{ inputs.issue-number }} --estimate"
+
+        if [ -n "${{ inputs.models }}" ]; then
+          ESTIMATE_CMD="$ESTIMATE_CMD --models ${{ inputs.models }}"
+        fi
+
+        if [ -n "${{ inputs.depth }}" ]; then
+          ESTIMATE_CMD="$ESTIMATE_CMD --depth ${{ inputs.depth }}"
+        fi
+
+        if [ "${{ inputs.research }}" = "true" ]; then
+          ESTIMATE_CMD="$ESTIMATE_CMD --research"
+          if [ -n "${{ inputs.research-provider }}" ]; then
+            ESTIMATE_CMD="$ESTIMATE_CMD --research-provider ${{ inputs.research-provider }}"
+          fi
+          if [ -n "${{ inputs.research-model }}" ]; then
+            ESTIMATE_CMD="$ESTIMATE_CMD --research-model ${{ inputs.research-model }}"
+          fi
+        fi
+
+        echo "Running: $ESTIMATE_CMD"
+        ESTIMATE_OUTPUT=$($ESTIMATE_CMD)
+        echo "$ESTIMATE_OUTPUT"
+
+        # Extract cost from output (format: "Total: $X.XXXX")
+        COST=$(echo "$ESTIMATE_OUTPUT" | grep -oP 'Total: \$\K[0-9.]+' || echo "0")
+        echo "estimated-cost=$COST" >> $GITHUB_OUTPUT
+        echo "ESTIMATED_COST=$COST" >> $GITHUB_ENV
+
+    - name: Check cost budget
+      shell: bash
+      run: |
+        if [ -n "${{ inputs.max-cost }}" ]; then
+          MAX_COST="${{ inputs.max-cost }}"
+          ESTIMATED_COST="${{ steps.estimate.outputs.estimated-cost }}"
+
+          # Compare costs using bc for floating point
+          if command -v bc &> /dev/null; then
+            OVER_BUDGET=$(echo "$ESTIMATED_COST > $MAX_COST" | bc)
+            if [ "$OVER_BUDGET" -eq 1 ]; then
+              echo "::error::Estimated cost (\$$ESTIMATED_COST) exceeds max budget (\$$MAX_COST)"
+              exit 1
+            fi
+          else
+            echo "::warning::bc not found, skipping cost check"
+          fi
+
+          echo "::notice::Cost check passed: \$$ESTIMATED_COST <= \$$MAX_COST"
+        fi
+
+    - name: Generate and post plan
+      shell: bash
+      run: |
+        PLAN_CMD="pcl plan ${{ github.repository }}#${{ inputs.issue-number }} --post --github-token ${{ inputs.github-token }}"
+
+        if [ -n "${{ inputs.models }}" ]; then
+          PLAN_CMD="$PLAN_CMD --models ${{ inputs.models }}"
+        fi
+
+        if [ -n "${{ inputs.depth }}" ]; then
+          PLAN_CMD="$PLAN_CMD --depth ${{ inputs.depth }}"
+        fi
+
+        if [ "${{ inputs.research }}" = "true" ]; then
+          PLAN_CMD="$PLAN_CMD --research"
+          if [ -n "${{ inputs.research-provider }}" ]; then
+            PLAN_CMD="$PLAN_CMD --research-provider ${{ inputs.research-provider }}"
+          fi
+          if [ -n "${{ inputs.research-model }}" ]; then
+            PLAN_CMD="$PLAN_CMD --research-model ${{ inputs.research-model }}"
+          fi
+        fi
+
+        echo "Running: pcl plan ${{ github.repository }}#${{ inputs.issue-number }} --post [...]"
+        $PLAN_CMD
+
+    - name: Output summary
+      shell: bash
+      run: |
+        echo "::notice::Plan generated successfully for issue #${{ inputs.issue-number }}"
+        echo "::notice::Estimated cost: \$${{ steps.estimate.outputs.estimated-cost }}"
