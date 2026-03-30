@@ -24,6 +24,13 @@ export const ConsensusConfigSchema = z.object({
   similarity: z.enum(['jaccard', 'tfidf', 'hybrid']).default('hybrid'),
 });
 
+export const PluginConfigSchema = z.object({
+  type: z.enum(['model', 'formatter', 'resolver', 'research']),
+  name: z.string(),
+  path: z.string(),
+  options: z.record(z.unknown()).optional(),
+});
+
 export const PlanCouncilConfigSchema = z.object({
   models: z.array(ModelConfigSchema),
   depth: z.enum(['high-level', 'detailed', 'implementation']).default('detailed'),
@@ -36,9 +43,11 @@ export const PlanCouncilConfigSchema = z.object({
   }).optional(),
   research: ResearchConfigSchema.optional(),
   consensus: ConsensusConfigSchema.optional(),
+  plugins: z.array(PluginConfigSchema).optional(),
 });
 
 export type ModelConfig = z.infer<typeof ModelConfigSchema>;
 export type ResearchConfig = z.infer<typeof ResearchConfigSchema>;
 export type ConsensusConfig = z.infer<typeof ConsensusConfigSchema>;
+export type PluginConfig = z.infer<typeof PluginConfigSchema>;
 export type PlanCouncilConfig = z.infer<typeof PlanCouncilConfigSchema>;

@@ -1,4 +1,4 @@
-export type SourceType = 'github' | 'file' | 'inline' | 'stdin' | 'url';
+export type SourceType = 'github' | 'file' | 'inline' | 'stdin' | 'url' | 'plugin';
 
 export interface PlanInput {
   title: string;

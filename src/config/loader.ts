@@ -1,6 +1,7 @@
 import { cosmiconfig } from 'cosmiconfig';
 import { PlanCouncilConfig, PlanCouncilConfigSchema, ModelConfig } from './schema.js';
 import { getDefaultModels, MODEL_ALIASES } from './defaults.js';
+import { loadPlugins, pluginRegistry } from '../plugins/index.js';
 
 const explorer = cosmiconfig('plan-council');
 
@@ -26,7 +27,19 @@ export async function loadConfig(overrides?: Partial<PlanCouncilConfig>): Promis
   };
 
   // Validate and return
-  return PlanCouncilConfigSchema.parse(merged);
+  const validated = PlanCouncilConfigSchema.parse(merged);
+
+  // Load plugins if specified in config
+  if (validated.plugins && validated.plugins.length > 0) {
+    try {
+      const plugins = await loadPlugins(validated.plugins);
+      pluginRegistry.registerAll(plugins);
+    } catch (error) {
+      console.error('Warning: Failed to load plugins:', error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  return validated;
 }
 
 const VALID_PROVIDERS = ['anthropic', 'openai', 'google', 'openai-compat'] as const;

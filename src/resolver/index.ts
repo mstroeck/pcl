@@ -5,6 +5,7 @@ import { PlanInput, ResolverOptions } from './types.js';
 import { parseGitHubReference, resolveGitHubIssue } from './github.js';
 import { resolveFile } from './file.js';
 import { resolveInline } from './inline.js';
+import { pluginRegistry } from '../plugins/index.js';
 
 export async function resolve(target: string, options: ResolverOptions = {}): Promise<PlanInput> {
   // Stdin
@@ -14,6 +15,15 @@ export async function resolve(target: string, options: ResolverOptions = {}): Pr
       title: 'Plan from stdin',
       description: stdin,
       sourceType: 'stdin',
+    };
+  }
+
+  // Try plugin resolvers first
+  const pluginResult = await pluginRegistry.tryResolveInput(target);
+  if (pluginResult) {
+    return {
+      ...pluginResult,
+      sourceType: 'plugin',
     };
   }
 
