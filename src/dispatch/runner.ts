@@ -4,6 +4,7 @@ import { OpenAIAdapter } from './openai.js';
 import { GoogleAdapter } from './google.js';
 import { ModelAdapter, PlanRequest, PlanResponse } from './adapter.js';
 import { generateCacheKey, getFromCache, setInCache } from '../cache/index.js';
+import { pluginRegistry } from '../plugins/index.js';
 
 export async function dispatchToModels(
   models: ModelConfig[],
@@ -80,6 +81,16 @@ async function dispatchToModel(
 }
 
 function createAdapter(modelConfig: ModelConfig): ModelAdapter {
+  // Check for a custom plugin adapter. Plugins register by their own name which
+  // may match either the model name or the provider name, so try both.
+  const pluginAdapter =
+    pluginRegistry.getModelAdapter(modelConfig.model) ||
+    pluginRegistry.getModelAdapter(modelConfig.provider);
+  if (pluginAdapter) {
+    return pluginAdapter;
+  }
+
+  // Fall back to built-in adapters
   const apiKey = modelConfig.apiKey || getApiKeyFromEnv(modelConfig.provider);
 
   if (!apiKey) {

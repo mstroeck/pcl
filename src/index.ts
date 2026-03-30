@@ -8,15 +8,21 @@ import { resolve } from './resolver/index.js';
 import { BASE_SYSTEM_PROMPT } from './prompts/base.js';
 import { getDepthPrompt } from './prompts/depth.js';
 import { dispatchToModels } from './dispatch/runner.js';
+import { dispatchToModelsStreaming } from './dispatch/streaming.js';
 import { buildConsensus } from './consensus/index.js';
 import { formatTerminal } from './output/terminal.js';
 import { formatMarkdown } from './output/markdown.js';
 import { formatJSON } from './output/json.js';
+import { formatMermaid } from './output/mermaid.js';
+import { formatHTML } from './output/html.js';
 import { postToGitHub } from './output/github.js';
 import { estimateCost, formatCostEstimate } from './cost/estimator.js';
 import { PlanCouncilConfig, ResearchConfig } from './config/schema.js';
 import { DepthLevel } from './prompts/depth.js';
 import { conductResearch, formatResearchForPrompt } from './research/index.js';
+import { runDoctor } from './cli/doctor.js';
+import { showConfig, getProfile } from './cli/config.js';
+import { generateBashCompletions, generateZshCompletions, generateFishCompletions } from './cli/completions.js';
 
 interface PlanOptions {
   models?: string;
@@ -24,6 +30,7 @@ interface PlanOptions {
   depth?: DepthLevel;
   json?: boolean;
   markdown?: boolean;
+  outputFormat?: 'terminal' | 'markdown' | 'json' | 'mermaid' | 'html';
   output?: string;
   post?: boolean;
   githubToken?: string;
@@ -36,6 +43,7 @@ interface PlanOptions {
   researchProvider?: string;
   researchModel?: string;
   cache?: boolean; // Commander sets this to false when --no-cache is used
+  profile?: 'fast' | 'thorough';
 }
 
 const program = new Command();
@@ -50,9 +58,10 @@ program
   .description('Create a plan for a task, feature, or issue')
   .option('--models <models>', 'Comma-separated models to use')
   .option('--context <text>', 'Additional codebase/project context')
-  .option('--depth <level>', 'Planning depth: high-level | detailed | implementation', 'detailed')
-  .option('--json', 'Output as JSON')
-  .option('--markdown', 'Output as Markdown')
+  .option('--depth <level>', 'Planning depth: high-level | detailed | implementation')
+  .option('--json', 'Output as JSON (legacy, use --output-format json)')
+  .option('--markdown', 'Output as Markdown (legacy, use --output-format markdown)')
+  .option('--output-format <format>', 'Output format: terminal | markdown | json | mermaid | html')
   .option('--output <file>', 'Write output to file')
   .option('--post', 'Post as GitHub issue comment')
   .option('--github-token <token>', 'GitHub token')
@@ -65,11 +74,14 @@ program
   .option('--research-provider <provider>', 'Research provider to use (perplexity, openai-compat)')
   .option('--research-model <model>', 'Model to use for research')
   .option('--no-cache', 'Disable response caching')
+  .option('--profile <profile>', 'Config profile: fast (cheap models) or thorough (expensive models)')
   .action(async (target: string, options: PlanOptions) => {
     try {
       const spinner = ora('Loading configuration...').start();
 
-      // Load config
+      // Load config with profile if specified
+      const profileConfig = options.profile ? getProfile(options.profile) : undefined;
+
       const researchOverride = options.research
         ? ({
             enabled: true,
@@ -81,14 +93,15 @@ program
         : undefined;
 
       const config = await loadConfig({
-        models: options.models ? parseModelsOption(options.models) : undefined,
-        depth: options.depth,
-        timeout: options.timeout ? options.timeout * 1000 : undefined,
-        maxCost: options.maxCost,
+        ...profileConfig,
+        models: options.models ? parseModelsOption(options.models) : profileConfig?.models,
+        depth: options.depth ?? profileConfig?.depth ?? 'detailed',
+        timeout: options.timeout ? options.timeout * 1000 : profileConfig?.timeout,
+        maxCost: options.maxCost ?? profileConfig?.maxCost,
         github: (options.githubToken || process.env.GITHUB_TOKEN) ? {
           token: options.githubToken || process.env.GITHUB_TOKEN,
         } : undefined,
-        research: researchOverride,
+        research: researchOverride || profileConfig?.research,
       });
 
       spinner.text = 'Resolving input...';
@@ -136,10 +149,24 @@ program
         process.exit(1);
       }
 
+      // Determine output format early for streaming display
+      let format: 'terminal' | 'markdown' | 'json' | 'mermaid' | 'html' = 'terminal';
+      if (options.outputFormat) {
+        format = options.outputFormat;
+      } else if (options.json) {
+        format = 'json';
+      } else if (options.markdown) {
+        format = 'markdown';
+      }
+
       spinner.text = `Dispatching to ${config.models.length} model(s)...`;
 
-      // Dispatch to models
-      const responses = await dispatchToModels(
+      // Track streaming progress
+      const completedModels: string[] = [];
+      let currentCost = 0;
+
+      // Dispatch to models with streaming
+      const responses = await dispatchToModelsStreaming(
         config.models,
         {
           systemPrompt,
@@ -149,6 +176,25 @@ program
         {
           useCache: options.cache !== false,
           cacheTTL: 3600,
+          onModelComplete: (response, timingMs) => {
+            completedModels.push(response.model);
+            const timingSec = (timingMs / 1000).toFixed(1);
+
+            // Update spinner with progress
+            spinner.text = `${completedModels.length}/${config.models.length} models complete • ${response.model} (${timingSec}s)`;
+
+            // Show individual completion in terminal format
+            if (format === 'terminal' && !response.error) {
+              spinner.stopAndPersist({
+                symbol: '✓',
+                text: `${response.model} completed in ${timingSec}s${response.cached ? ' (cached)' : ''}`,
+              });
+              spinner.start();
+            }
+          },
+          onCostUpdate: (current, total) => {
+            currentCost = current;
+          },
         }
       );
 
@@ -170,15 +216,29 @@ program
 
       spinner.succeed('Plan created successfully!');
 
+      // Show final cost summary
+      console.log(`\nEstimated cost: $${currentCost.toFixed(4)}`);
+
       // Format output
       let output: string;
 
-      if (options.json) {
-        output = formatJSON(consensusPlan);
-      } else if (options.markdown) {
-        output = formatMarkdown(consensusPlan, options.verbose);
-      } else {
-        output = formatTerminal(consensusPlan, options.verbose);
+      switch (format) {
+        case 'json':
+          output = formatJSON(consensusPlan);
+          break;
+        case 'markdown':
+          output = formatMarkdown(consensusPlan, options.verbose);
+          break;
+        case 'mermaid':
+          output = formatMermaid(consensusPlan);
+          break;
+        case 'html':
+          output = formatHTML(consensusPlan, options.verbose);
+          break;
+        case 'terminal':
+        default:
+          output = formatTerminal(consensusPlan, options.verbose);
+          break;
       }
 
       // Output
@@ -261,6 +321,59 @@ program
         console.error(`Unknown action: ${action}. Use 'clear' or 'stats'.`);
         process.exit(1);
       }
+    } catch (error) {
+      console.error('Error:', error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+  });
+
+program
+  .command('doctor')
+  .description('Validate API keys and test provider connectivity')
+  .action(async () => {
+    try {
+      await runDoctor();
+    } catch (error) {
+      console.error('Error:', error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+  });
+
+program
+  .command('config')
+  .description('Show resolved configuration')
+  .action(async () => {
+    try {
+      await showConfig();
+    } catch (error) {
+      console.error('Error:', error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+  });
+
+program
+  .command('completions <shell>')
+  .description('Generate shell completions (bash, zsh, fish)')
+  .action(async (shell: string) => {
+    try {
+      let completions: string;
+
+      switch (shell.toLowerCase()) {
+        case 'bash':
+          completions = generateBashCompletions();
+          break;
+        case 'zsh':
+          completions = generateZshCompletions();
+          break;
+        case 'fish':
+          completions = generateFishCompletions();
+          break;
+        default:
+          console.error(`Unsupported shell: ${shell}. Use bash, zsh, or fish.`);
+          process.exit(1);
+      }
+
+      console.log(completions);
     } catch (error) {
       console.error('Error:', error instanceof Error ? error.message : String(error));
       process.exit(1);

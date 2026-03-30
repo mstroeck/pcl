@@ -1,0 +1,52 @@
+name: Auto-Plan Issues
+
+on:
+  issues:
+    types: [labeled]
+
+jobs:
+  plan:
+    # Use contains() so the job runs correctly even when multiple labels are
+    # present on the issue (the simple == check only sees the most-recently
+    # applied label, which can miss cases where 'plan' was already there).
+    if: contains(github.event.issue.labels.*.name, 'plan')
+    runs-on: ubuntu-latest
+
+    permissions:
+      issues: write  # Required to post comments
+      contents: read
+
+    steps:
+      - name: Generate plan with Plan Council
+        id: plan
+        # Pinned to a specific commit SHA instead of @main to prevent
+        # unreviewed upstream changes from running in this workflow.
+        uses: mstroeck/pcl@a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1  # renovate: tag=v0.1.0
+        with:
+          issue-number: ${{ github.event.issue.number }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+          # Model configuration (optional - defaults to auto-detection)
+          models: 'claude-3-7-sonnet,gpt-4o,gemini-2.0-flash-thinking-exp'
+
+          # Planning depth (optional - default: detailed)
+          depth: 'detailed'
+
+          # Cost guardrails (optional - fails if estimate exceeds this)
+          max-cost: '0.50'  # $0.50 USD
+
+          # API keys from secrets
+          anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
+          openai-api-key: ${{ secrets.OPENAI_API_KEY }}
+          google-api-key: ${{ secrets.GOOGLE_API_KEY }}
+
+          # Domain research (optional - opt-in, adds cost)
+          # research: 'true'
+          # research-provider: 'perplexity'
+          # perplexity-api-key: ${{ secrets.PERPLEXITY_API_KEY }}
+
+      - name: Summary
+        if: success()
+        run: |
+          echo "✅ Plan generated and posted to issue #${{ github.event.issue.number }}"
+          echo "Estimated cost: \$${{ steps.plan.outputs.estimated-cost }}"

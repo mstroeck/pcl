@@ -1,6 +1,7 @@
 import { cosmiconfig } from 'cosmiconfig';
-import { PlanCouncilConfig, PlanCouncilConfigSchema, ModelConfig } from './schema.js';
+import { PlanCouncilConfig, PlanCouncilConfigSchema, PluginConfig, ModelConfig } from './schema.js';
 import { getDefaultModels, MODEL_ALIASES } from './defaults.js';
+import { loadPlugin, pluginRegistry } from '../plugins/index.js';
 
 const explorer = cosmiconfig('plan-council');
 
@@ -26,7 +27,48 @@ export async function loadConfig(overrides?: Partial<PlanCouncilConfig>): Promis
   };
 
   // Validate and return
-  return PlanCouncilConfigSchema.parse(merged);
+  const validated = PlanCouncilConfigSchema.parse(merged);
+
+  // Load plugins as a side-effect of config loading. Callers that need finer
+  // control (e.g. tests) can call loadConfigPlugins() directly.
+  await loadConfigPlugins(validated);
+
+  return validated;
+}
+
+/**
+ * Load plugins declared in the config and register them.
+ * Skips plugins whose name is already registered for its type (dedup) and
+ * surfaces individual load failures as warnings instead of silently swallowing them.
+ */
+export async function loadConfigPlugins(config: PlanCouncilConfig): Promise<void> {
+  if (!config.plugins || config.plugins.length === 0) return;
+
+  for (const pluginConfig of config.plugins) {
+    // Dedup: skip if a plugin with this name is already registered for its type.
+    if (isPluginRegistered(pluginConfig.name, pluginConfig.type)) {
+      continue;
+    }
+
+    try {
+      const plugin = await loadPlugin(pluginConfig);
+      pluginRegistry.register(plugin);
+    } catch (error) {
+      // Surface the error with the specific plugin name so it is actionable
+      console.error(
+        `Warning: Failed to load plugin '${pluginConfig.name}' from '${pluginConfig.path}': ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+  }
+}
+
+function isPluginRegistered(name: string, type: PluginConfig['type']): boolean {
+  switch (type) {
+    case 'model':     return pluginRegistry.getModelAdapter(name) !== undefined;
+    case 'formatter': return pluginRegistry.getOutputFormatter(name) !== undefined;
+    case 'resolver':  return pluginRegistry.getInputResolver(name) !== undefined;
+    case 'research':  return pluginRegistry.getResearchProvider(name) !== undefined;
+  }
 }
 
 const VALID_PROVIDERS = ['anthropic', 'openai', 'google', 'openai-compat'] as const;
