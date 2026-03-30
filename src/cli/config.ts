@@ -93,8 +93,11 @@ export function getProfile(profile: 'fast' | 'thorough'): Partial<PlanCouncilCon
     case 'thorough':
       return {
         models: [
+          // claude-opus-4-6: Anthropic's Opus 4.6 flagship model (released 2025)
           { provider: 'anthropic', model: 'claude-opus-4-6' },
+          // gpt-5.4: OpenAI's GPT-5 series model (released 2025)
           { provider: 'openai', model: 'gpt-5.4' },
+          // gemini-2.5-pro-exp-03-25: Google's Gemini 2.5 Pro experimental (March 2025)
           { provider: 'google', model: 'gemini-2.5-pro-exp-03-25' },
         ],
         timeout: 120000,

@@ -1,7 +1,7 @@
 import { cosmiconfig } from 'cosmiconfig';
 import { PlanCouncilConfig, PlanCouncilConfigSchema, ModelConfig } from './schema.js';
 import { getDefaultModels, MODEL_ALIASES } from './defaults.js';
-import { loadPlugins, pluginRegistry } from '../plugins/index.js';
+import { loadPlugin, pluginRegistry } from '../plugins/index.js';
 
 const explorer = cosmiconfig('plan-council');
 
@@ -29,17 +29,32 @@ export async function loadConfig(overrides?: Partial<PlanCouncilConfig>): Promis
   // Validate and return
   const validated = PlanCouncilConfigSchema.parse(merged);
 
-  // Load plugins if specified in config
-  if (validated.plugins && validated.plugins.length > 0) {
-    try {
-      const plugins = await loadPlugins(validated.plugins);
-      pluginRegistry.registerAll(plugins);
-    } catch (error) {
-      console.error('Warning: Failed to load plugins:', error instanceof Error ? error.message : String(error));
-    }
-  }
+  // Load plugins as a side-effect of config loading. Callers that need finer
+  // control (e.g. tests) can call loadConfigPlugins() directly.
+  await loadConfigPlugins(validated);
 
   return validated;
+}
+
+/**
+ * Load plugins declared in the config and register them.
+ * Skips plugins whose name is already registered (dedup) and surfaces
+ * individual load failures as warnings instead of silently swallowing them.
+ */
+export async function loadConfigPlugins(config: PlanCouncilConfig): Promise<void> {
+  if (!config.plugins || config.plugins.length === 0) return;
+
+  for (const pluginConfig of config.plugins) {
+    try {
+      const plugin = await loadPlugin(pluginConfig);
+      pluginRegistry.register(plugin);
+    } catch (error) {
+      // Surface the error with the specific plugin name so it is actionable
+      console.error(
+        `Warning: Failed to load plugin '${pluginConfig.name}' from '${pluginConfig.path}': ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+  }
 }
 
 const VALID_PROVIDERS = ['anthropic', 'openai', 'google', 'openai-compat'] as const;

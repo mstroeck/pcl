@@ -21,9 +21,13 @@ export async function resolve(target: string, options: ResolverOptions = {}): Pr
   // Try plugin resolvers first
   const pluginResult = await pluginRegistry.tryResolveInput(target);
   if (pluginResult) {
+    // Explicitly spread fields so TypeScript can verify the shape and plugin
+    // metadata is carried through to PlanInput.metadata.
     return {
-      ...pluginResult,
-      sourceType: 'plugin',
+      title: pluginResult.title,
+      description: pluginResult.description,
+      sourceType: 'plugin' as const,
+      metadata: pluginResult.metadata,
     };
   }
 

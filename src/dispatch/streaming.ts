@@ -1,6 +1,7 @@
 import { ModelConfig } from '../config/schema.js';
 import { PlanRequest, PlanResponse } from './adapter.js';
 import { estimateCost } from '../cost/estimator.js';
+import { dispatchToModels } from './runner.js';
 
 /**
  * Callback function called when a model completes
@@ -31,9 +32,6 @@ export async function dispatchToModelsStreaming(
   request: PlanRequest,
   options: StreamingOptions = {}
 ): Promise<PlanResponse[]> {
-  // Import dynamically to avoid circular dependency
-  const { dispatchToModels } = await import('./runner.js');
-
   // Estimate total cost
   const estimate = estimateCost(models, request.systemPrompt + request.userPrompt);
   const totalEstimate = estimate.totalCost;
@@ -42,7 +40,10 @@ export async function dispatchToModelsStreaming(
   let completedCount = 0;
   let currentCost = 0;
 
-  // Create wrapped promises with timing and callbacks
+  // Create wrapped promises with timing and callbacks.
+  // Each model is dispatched individually so we can fire per-model callbacks as
+  // soon as each one finishes (true streaming progress), while still reusing the
+  // full pipeline (cache + retry) from runner.ts.
   const promises = models.map(async (modelConfig, index) => {
     const startTime = Date.now();
 
@@ -56,11 +57,14 @@ export async function dispatchToModelsStreaming(
       const response = responses[0];
       const timingMs = Date.now() - startTime;
 
-      // Update cost estimate
+      // Update cost estimate. Fall back to an even split of the total when the
+      // model name in the estimate doesn't match exactly (e.g. provider-prefixed).
       completedCount++;
       const modelEstimate = estimate.models.find((m) => m.model === modelConfig.model);
       if (modelEstimate) {
         currentCost += modelEstimate.estimatedCost;
+      } else {
+        currentCost += totalEstimate / models.length;
       }
 
       // Call callbacks

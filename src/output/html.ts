@@ -299,7 +299,7 @@ function renderSteps(steps: ConsensusStep[], verbose: boolean): string {
       <div class="meta">
         <div class="meta-item">
           <span class="meta-label">Proposed by:</span>
-          ${step.proposedBy.join(', ')}
+          ${step.proposedBy.map((p) => escapeHtml(p)).join(', ')}
         </div>
       </div>
       ${
@@ -378,7 +378,7 @@ function renderDecisions(decisions: ConsensusDecision[], verbose: boolean): stri
       <div class="meta">
         <div class="meta-item">
           <span class="meta-label">Proposed by:</span>
-          ${decision.proposedBy.join(', ')}
+          ${decision.proposedBy.map((p) => escapeHtml(p)).join(', ')}
         </div>
       </div>
     </div>
@@ -416,7 +416,7 @@ function renderRisks(risks: ConsensusRisk[], verbose: boolean): string {
       <div class="meta">
         <div class="meta-item">
           <span class="meta-label">Identified by:</span>
-          ${risk.proposedBy.join(', ')}
+          ${risk.proposedBy.map((p) => escapeHtml(p)).join(', ')}
         </div>
       </div>
     </div>
@@ -509,5 +509,5 @@ function escapeHtml(text: string): string {
     '"': '&quot;',
     "'": '&#039;',
   };
-  return text.replace(/[&<>"']/g, (m) => map[m]);
+  return text.replace(/[&<>"']/g, (m) => map[m] ?? m);
 }

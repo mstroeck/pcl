@@ -7,8 +7,11 @@ import {
 } from './types.js';
 
 /**
- * Global plugin registry
- * Stores loaded plugins by type and name
+ * Global plugin registry.
+ * Stores loaded plugins by type and name.
+ *
+ * This is a module-level singleton. Call `clear()` between test cases or
+ * whenever you need to reset state (e.g. to avoid cross-test pollution).
  */
 class PluginRegistry {
   private modelAdapters = new Map<string, ModelAdapter>();
@@ -151,20 +154,30 @@ class PluginRegistry {
     };
   }
 
-  // Type guards
+  // Type guards: prefer the explicit `pluginType` discriminator injected by the
+  // loader over duck typing, which can misclassify plugins that implement
+  // multiple interfaces.
   private isModelAdapter(plugin: Plugin): plugin is ModelAdapter {
+    const pt = (plugin as { pluginType?: string }).pluginType;
+    if (pt !== undefined) return pt === 'model';
     return 'execute' in plugin;
   }
 
   private isOutputFormatter(plugin: Plugin): plugin is OutputFormatter {
+    const pt = (plugin as { pluginType?: string }).pluginType;
+    if (pt !== undefined) return pt === 'formatter';
     return 'format' in plugin;
   }
 
   private isInputResolver(plugin: Plugin): plugin is InputResolver {
+    const pt = (plugin as { pluginType?: string }).pluginType;
+    if (pt !== undefined) return pt === 'resolver';
     return 'pattern' in plugin && 'resolve' in plugin;
   }
 
   private isResearchProvider(plugin: Plugin): plugin is ResearchProvider {
+    const pt = (plugin as { pluginType?: string }).pluginType;
+    if (pt !== undefined) return pt === 'research';
     return 'research' in plugin;
   }
 }

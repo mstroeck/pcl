@@ -7,6 +7,12 @@ import { PlanRequest, PlanResponse } from '../dispatch/adapter.js';
  */
 export interface ModelAdapter {
   /**
+   * Explicit type discriminator set by the loader. Prefer this over duck typing
+   * when classifying plugins in the registry.
+   */
+  pluginType?: 'model';
+
+  /**
    * Unique identifier for this adapter (e.g., 'ollama', 'claude-vertex')
    */
   name: string;
@@ -27,6 +33,9 @@ export interface ModelAdapter {
  * Allows exporting plans in custom formats (e.g., Linear, Jira, Notion)
  */
 export interface OutputFormatter {
+  /** Explicit type discriminator set by the loader. */
+  pluginType?: 'formatter';
+
   /**
    * Unique identifier for this formatter (e.g., 'linear', 'jira')
    */
@@ -53,6 +62,9 @@ export interface OutputFormatter {
  * Allows reading task descriptions from custom sources (e.g., Linear issues, Jira tickets)
  */
 export interface InputResolver {
+  /** Explicit type discriminator set by the loader. */
+  pluginType?: 'resolver';
+
   /**
    * Unique identifier for this resolver (e.g., 'linear', 'jira')
    */
@@ -78,6 +90,9 @@ export interface InputResolver {
  * Allows integrating alternative research sources (e.g., Exa, Tavily)
  */
 export interface ResearchProvider {
+  /** Explicit type discriminator set by the loader. */
+  pluginType?: 'research';
+
   /**
    * Unique identifier for this provider (e.g., 'exa', 'tavily')
    */

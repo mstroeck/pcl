@@ -4,8 +4,14 @@ import { existsSync } from 'fs';
 import { Plugin, PluginConfig, PluginFactory } from './types.js';
 
 /**
- * Load a plugin from a module path
- * Supports both npm packages and local file paths
+ * Load a plugin from a module path.
+ * Supports both npm packages and local file paths.
+ *
+ * SECURITY: Only load plugins from trusted sources. Local paths are resolved
+ * relative to the current working directory and must exist on disk. npm package
+ * names are validated against a safe allowlist pattern (no shell metacharacters,
+ * no path traversal sequences). Running untrusted third-party plugins carries
+ * the same risk as executing arbitrary code.
  */
 export async function loadPlugin(config: PluginConfig): Promise<Plugin> {
   const modulePath = resolvePluginPath(config.path);
@@ -34,6 +40,10 @@ export async function loadPlugin(config: PluginConfig): Promise<Plugin> {
 
     // Validate plugin has required properties
     validatePlugin(plugin, config.type);
+
+    // Annotate with explicit type discriminator so the registry can classify
+    // the plugin reliably without relying solely on duck typing.
+    (plugin as unknown as Record<string, unknown>).pluginType = config.type;
 
     // Optional: run plugin validation
     if ('validate' in plugin && typeof plugin.validate === 'function') {
@@ -65,8 +75,24 @@ function resolvePluginPath(path: string): string {
     return pathToFileURL(absolutePath).href;
   }
 
-  // Otherwise, treat as npm package name
+  // Otherwise, treat as npm package name — validate it is a safe package name
+  // to prevent path traversal or shell injection via crafted package names.
+  validateNpmPackageName(path);
   return path;
+}
+
+/**
+ * Validate that a string is a safe npm package name.
+ * Accepts plain names and scoped packages (@scope/name).
+ */
+function validateNpmPackageName(name: string): void {
+  // Scoped: @scope/package or unscoped: package-name
+  // Allow lowercase letters, digits, hyphens, underscores, dots.
+  if (!/^(@[a-z0-9-_.]+\/)?[a-z0-9-_.]+$/.test(name)) {
+    throw new Error(
+      `Invalid plugin package name: "${name}". Must be a valid npm package name (lowercase letters, digits, hyphens, underscores, dots; optionally scoped as @scope/name).`
+    );
+  }
 }
 
 /**

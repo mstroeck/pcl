@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { writeFile, mkdir, rm } from 'fs/promises';
 import { join } from 'path';
 import { tmpdir } from 'os';
@@ -12,6 +12,11 @@ describe('Plugin Loader', () => {
     // Create temporary directory for test plugins
     testDir = join(tmpdir(), `pcl-test-${Date.now()}`);
     await mkdir(testDir, { recursive: true });
+  });
+
+  afterEach(async () => {
+    // Always clean up the temp directory, even if the test fails
+    await rm(testDir, { recursive: true, force: true });
   });
 
   it('should load a valid model adapter plugin', async () => {
@@ -42,9 +47,6 @@ describe('Plugin Loader', () => {
     const plugin = await loadPlugin(config);
     expect(plugin.name).toBe('test-model');
     expect('execute' in plugin).toBe(true);
-
-    // Cleanup
-    await rm(testDir, { recursive: true, force: true });
   });
 
   it('should load a valid output formatter plugin', async () => {
@@ -73,9 +75,6 @@ describe('Plugin Loader', () => {
     const plugin = await loadPlugin(config);
     expect(plugin.name).toBe('test-formatter');
     expect('format' in plugin).toBe(true);
-
-    // Cleanup
-    await rm(testDir, { recursive: true, force: true });
   });
 
   it('should load a valid input resolver plugin', async () => {
@@ -108,9 +107,6 @@ describe('Plugin Loader', () => {
     expect(plugin.name).toBe('test-resolver');
     expect('pattern' in plugin).toBe(true);
     expect('resolve' in plugin).toBe(true);
-
-    // Cleanup
-    await rm(testDir, { recursive: true, force: true });
   });
 
   it('should load a valid research provider plugin', async () => {
@@ -141,9 +137,6 @@ describe('Plugin Loader', () => {
     const plugin = await loadPlugin(config);
     expect(plugin.name).toBe('test-research');
     expect('research' in plugin).toBe(true);
-
-    // Cleanup
-    await rm(testDir, { recursive: true, force: true });
   });
 
   it('should pass options to plugin factory', async () => {
@@ -176,9 +169,6 @@ describe('Plugin Loader', () => {
       const result = await plugin.format({} as any);
       expect(result).toBe('custom formatted');
     }
-
-    // Cleanup
-    await rm(testDir, { recursive: true, force: true });
   });
 
   it('should throw error for missing plugin file', async () => {
@@ -207,8 +197,5 @@ describe('Plugin Loader', () => {
     };
 
     await expect(loadPlugin(config)).rejects.toThrow('must export a default function');
-
-    // Cleanup
-    await rm(testDir, { recursive: true, force: true });
   });
 });

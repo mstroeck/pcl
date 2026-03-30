@@ -2,12 +2,12 @@ name: Auto-Plan Issues
 
 on:
   issues:
-    types: [opened, labeled]
+    types: [labeled]
 
 jobs:
   plan:
-    # Only run when issue is labeled with 'plan' or on issue creation (configurable)
-    if: contains(github.event.issue.labels.*.name, 'plan') || github.event.action == 'opened'
+    # Only run when the 'plan' label is applied to an issue
+    if: github.event.label.name == 'plan'
     runs-on: ubuntu-latest
 
     permissions:

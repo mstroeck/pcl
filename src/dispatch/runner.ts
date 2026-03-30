@@ -81,8 +81,11 @@ async function dispatchToModel(
 }
 
 function createAdapter(modelConfig: ModelConfig): ModelAdapter {
-  // Check if there's a custom plugin adapter for this provider
-  const pluginAdapter = pluginRegistry.getModelAdapter(modelConfig.provider);
+  // Check for a custom plugin adapter. Plugins register by their own name which
+  // may match either the model name or the provider name, so try both.
+  const pluginAdapter =
+    pluginRegistry.getModelAdapter(modelConfig.model) ||
+    pluginRegistry.getModelAdapter(modelConfig.provider);
   if (pluginAdapter) {
     return pluginAdapter;
   }

@@ -58,7 +58,7 @@ program
   .description('Create a plan for a task, feature, or issue')
   .option('--models <models>', 'Comma-separated models to use')
   .option('--context <text>', 'Additional codebase/project context')
-  .option('--depth <level>', 'Planning depth: high-level | detailed | implementation', 'detailed')
+  .option('--depth <level>', 'Planning depth: high-level | detailed | implementation')
   .option('--json', 'Output as JSON (legacy, use --output-format json)')
   .option('--markdown', 'Output as Markdown (legacy, use --output-format markdown)')
   .option('--output-format <format>', 'Output format: terminal | markdown | json | mermaid | html')

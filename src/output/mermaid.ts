@@ -1,4 +1,4 @@
-import { ConsensusPlan, ConsensusStep } from '../consensus/types.js';
+import { ConsensusPlan } from '../consensus/types.js';
 
 /**
  * Generate a Mermaid flowchart from the consensus plan's dependency graph
@@ -15,14 +15,8 @@ export function formatMermaid(plan: ConsensusPlan): string {
   for (const step of plan.steps) {
     const nodeId = sanitizeNodeId(step.id);
     const label = escapeLabel(step.title);
-    const style = getNodeStyle(step);
 
     lines.push(`  ${nodeId}["${label}"]`);
-
-    // Apply style based on category
-    if (style) {
-      lines.push(`  ${style}::${nodeId}`);
-    }
   }
 
   // Create edges for dependencies
@@ -78,10 +72,3 @@ function escapeLabel(label: string): string {
     .slice(0, 50); // Limit length for readability
 }
 
-/**
- * Get node style class based on step category
- */
-function getNodeStyle(step: ConsensusStep): string | null {
-  // Styles are applied via classDef, return null
-  return null;
-}

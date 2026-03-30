@@ -61,53 +61,73 @@ runs:
     - name: Install Plan Council
       shell: bash
       run: |
-        npm install -g plan-council
+        npm install -g plan-council@0.1.0
+
+    # Mask secrets BEFORE writing them to GITHUB_ENV so they are never logged in plaintext.
+    # Inputs are passed via env: to avoid shell injection from ${{ }} inline interpolation.
+    - name: Mask secrets in logs
+      shell: bash
+      env:
+        INPUT_ANTHROPIC_KEY: ${{ inputs.anthropic-api-key }}
+        INPUT_OPENAI_KEY: ${{ inputs.openai-api-key }}
+        INPUT_GOOGLE_KEY: ${{ inputs.google-api-key }}
+        INPUT_PERPLEXITY_KEY: ${{ inputs.perplexity-api-key }}
+      run: |
+        [ -n "$INPUT_ANTHROPIC_KEY" ] && echo "::add-mask::$INPUT_ANTHROPIC_KEY"
+        [ -n "$INPUT_OPENAI_KEY" ] && echo "::add-mask::$INPUT_OPENAI_KEY"
+        [ -n "$INPUT_GOOGLE_KEY" ] && echo "::add-mask::$INPUT_GOOGLE_KEY"
+        [ -n "$INPUT_PERPLEXITY_KEY" ] && echo "::add-mask::$INPUT_PERPLEXITY_KEY"
 
     - name: Set API keys
       shell: bash
+      env:
+        INPUT_ANTHROPIC_KEY: ${{ inputs.anthropic-api-key }}
+        INPUT_OPENAI_KEY: ${{ inputs.openai-api-key }}
+        INPUT_GOOGLE_KEY: ${{ inputs.google-api-key }}
+        INPUT_PERPLEXITY_KEY: ${{ inputs.perplexity-api-key }}
       run: |
-        if [ -n "${{ inputs.anthropic-api-key }}" ]; then
-          echo "ANTHROPIC_API_KEY=${{ inputs.anthropic-api-key }}" >> $GITHUB_ENV
+        if [ -n "$INPUT_ANTHROPIC_KEY" ]; then
+          echo "ANTHROPIC_API_KEY=$INPUT_ANTHROPIC_KEY" >> "$GITHUB_ENV"
         fi
-        if [ -n "${{ inputs.openai-api-key }}" ]; then
-          echo "OPENAI_API_KEY=${{ inputs.openai-api-key }}" >> $GITHUB_ENV
+        if [ -n "$INPUT_OPENAI_KEY" ]; then
+          echo "OPENAI_API_KEY=$INPUT_OPENAI_KEY" >> "$GITHUB_ENV"
         fi
-        if [ -n "${{ inputs.google-api-key }}" ]; then
-          echo "GOOGLE_API_KEY=${{ inputs.google-api-key }}" >> $GITHUB_ENV
+        if [ -n "$INPUT_GOOGLE_KEY" ]; then
+          echo "GOOGLE_API_KEY=$INPUT_GOOGLE_KEY" >> "$GITHUB_ENV"
         fi
-        if [ -n "${{ inputs.perplexity-api-key }}" ]; then
-          echo "PERPLEXITY_API_KEY=${{ inputs.perplexity-api-key }}" >> $GITHUB_ENV
+        if [ -n "$INPUT_PERPLEXITY_KEY" ]; then
+          echo "PERPLEXITY_API_KEY=$INPUT_PERPLEXITY_KEY" >> "$GITHUB_ENV"
         fi
-
-    - name: Mask secrets in logs
-      shell: bash
-      run: |
-        echo "::add-mask::${{ inputs.anthropic-api-key }}"
-        echo "::add-mask::${{ inputs.openai-api-key }}"
-        echo "::add-mask::${{ inputs.google-api-key }}"
-        echo "::add-mask::${{ inputs.perplexity-api-key }}"
 
     - name: Estimate cost
       id: estimate
       shell: bash
+      env:
+        INPUT_ISSUE_NUMBER: ${{ inputs.issue-number }}
+        INPUT_REPO: ${{ github.repository }}
+        INPUT_MODELS: ${{ inputs.models }}
+        INPUT_DEPTH: ${{ inputs.depth }}
+        INPUT_RESEARCH: ${{ inputs.research }}
+        INPUT_RESEARCH_PROVIDER: ${{ inputs.research-provider }}
+        INPUT_RESEARCH_MODEL: ${{ inputs.research-model }}
       run: |
-        ESTIMATE_CMD="pcl plan ${{ github.repository }}#${{ inputs.issue-number }} --estimate"
+        ESTIMATE_CMD="pcl plan ${INPUT_REPO}#${INPUT_ISSUE_NUMBER} --estimate"
 
-        if [ -n "${{ inputs.models }}" ]; then
-          ESTIMATE_CMD="$ESTIMATE_CMD --models ${{ inputs.models }}"
+        if [ -n "$INPUT_MODELS" ]; then
+          ESTIMATE_CMD="$ESTIMATE_CMD --models $INPUT_MODELS"
         fi
 
-        if [ -n "${{ inputs.depth }}" ]; then
-          ESTIMATE_CMD="$ESTIMATE_CMD --depth ${{ inputs.depth }}"
+        if [ -n "$INPUT_DEPTH" ]; then
+          ESTIMATE_CMD="$ESTIMATE_CMD --depth $INPUT_DEPTH"
         fi
 
-        if [ "${{ inputs.research }}" = "true" ]; then
+        if [ "$INPUT_RESEARCH" = "true" ]; then
           ESTIMATE_CMD="$ESTIMATE_CMD --research"
-          if [ -n "${{ inputs.research-provider }}" ]; then
-            ESTIMATE_CMD="$ESTIMATE_CMD --research-provider ${{ inputs.research-provider }}"
+          if [ -n "$INPUT_RESEARCH_PROVIDER" ]; then
+            ESTIMATE_CMD="$ESTIMATE_CMD --research-provider $INPUT_RESEARCH_PROVIDER"
           fi
-          if [ -n "${{ inputs.research-model }}" ]; then
-            ESTIMATE_CMD="$ESTIMATE_CMD --research-model ${{ inputs.research-model }}"
+          if [ -n "$INPUT_RESEARCH_MODEL" ]; then
+            ESTIMATE_CMD="$ESTIMATE_CMD --research-model $INPUT_RESEARCH_MODEL"
           fi
         fi
 
@@ -116,16 +136,29 @@ runs:
         echo "$ESTIMATE_OUTPUT"
 
         # Extract cost from output (format: "Total: $X.XXXX")
-        COST=$(echo "$ESTIMATE_OUTPUT" | grep -oP 'Total: \$\K[0-9.]+' || echo "0")
-        echo "estimated-cost=$COST" >> $GITHUB_OUTPUT
-        echo "ESTIMATED_COST=$COST" >> $GITHUB_ENV
+        # Use POSIX-compatible grep -o piped to grep -o instead of grep -P
+        COST=$(echo "$ESTIMATE_OUTPUT" | grep -o 'Total: \$[0-9.]*' | grep -o '[0-9.]*$' || echo "0")
+        echo "estimated-cost=$COST" >> "$GITHUB_OUTPUT"
+        echo "ESTIMATED_COST=$COST" >> "$GITHUB_ENV"
 
     - name: Check cost budget
       shell: bash
+      env:
+        INPUT_MAX_COST: ${{ inputs.max-cost }}
       run: |
-        if [ -n "${{ inputs.max-cost }}" ]; then
-          MAX_COST="${{ inputs.max-cost }}"
-          ESTIMATED_COST="${{ steps.estimate.outputs.estimated-cost }}"
+        if [ -n "$INPUT_MAX_COST" ]; then
+          MAX_COST="$INPUT_MAX_COST"
+          # ESTIMATED_COST is set by the estimate step via GITHUB_ENV
+
+          # Validate that both values are numeric before passing to bc to prevent injection
+          if ! echo "$ESTIMATED_COST" | grep -qE '^[0-9]+(\.[0-9]+)?$'; then
+            echo "::warning::Invalid estimated cost format, skipping budget check"
+            exit 0
+          fi
+          if ! echo "$MAX_COST" | grep -qE '^[0-9]+(\.[0-9]+)?$'; then
+            echo "::warning::Invalid max-cost format, skipping budget check"
+            exit 0
+          fi
 
           # Compare costs using bc for floating point
           if command -v bc &> /dev/null; then
@@ -143,32 +176,44 @@ runs:
 
     - name: Generate and post plan
       shell: bash
+      env:
+        # Pass token via env var so it is never visible in the process list
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+        INPUT_ISSUE_NUMBER: ${{ inputs.issue-number }}
+        INPUT_REPO: ${{ github.repository }}
+        INPUT_MODELS: ${{ inputs.models }}
+        INPUT_DEPTH: ${{ inputs.depth }}
+        INPUT_RESEARCH: ${{ inputs.research }}
+        INPUT_RESEARCH_PROVIDER: ${{ inputs.research-provider }}
+        INPUT_RESEARCH_MODEL: ${{ inputs.research-model }}
       run: |
-        PLAN_CMD="pcl plan ${{ github.repository }}#${{ inputs.issue-number }} --post --github-token ${{ inputs.github-token }}"
+        PLAN_CMD="pcl plan ${INPUT_REPO}#${INPUT_ISSUE_NUMBER} --post"
 
-        if [ -n "${{ inputs.models }}" ]; then
-          PLAN_CMD="$PLAN_CMD --models ${{ inputs.models }}"
+        if [ -n "$INPUT_MODELS" ]; then
+          PLAN_CMD="$PLAN_CMD --models $INPUT_MODELS"
         fi
 
-        if [ -n "${{ inputs.depth }}" ]; then
-          PLAN_CMD="$PLAN_CMD --depth ${{ inputs.depth }}"
+        if [ -n "$INPUT_DEPTH" ]; then
+          PLAN_CMD="$PLAN_CMD --depth $INPUT_DEPTH"
         fi
 
-        if [ "${{ inputs.research }}" = "true" ]; then
+        if [ "$INPUT_RESEARCH" = "true" ]; then
           PLAN_CMD="$PLAN_CMD --research"
-          if [ -n "${{ inputs.research-provider }}" ]; then
-            PLAN_CMD="$PLAN_CMD --research-provider ${{ inputs.research-provider }}"
+          if [ -n "$INPUT_RESEARCH_PROVIDER" ]; then
+            PLAN_CMD="$PLAN_CMD --research-provider $INPUT_RESEARCH_PROVIDER"
           fi
-          if [ -n "${{ inputs.research-model }}" ]; then
-            PLAN_CMD="$PLAN_CMD --research-model ${{ inputs.research-model }}"
+          if [ -n "$INPUT_RESEARCH_MODEL" ]; then
+            PLAN_CMD="$PLAN_CMD --research-model $INPUT_RESEARCH_MODEL"
           fi
         fi
 
-        echo "Running: pcl plan ${{ github.repository }}#${{ inputs.issue-number }} --post [...]"
+        echo "Running: pcl plan ${INPUT_REPO}#${INPUT_ISSUE_NUMBER} --post [...]"
         $PLAN_CMD
 
     - name: Output summary
       shell: bash
+      env:
+        INPUT_ISSUE_NUMBER: ${{ inputs.issue-number }}
       run: |
-        echo "::notice::Plan generated successfully for issue #${{ inputs.issue-number }}"
-        echo "::notice::Estimated cost: \$${{ steps.estimate.outputs.estimated-cost }}"
+        echo "::notice::Plan generated successfully for issue #${INPUT_ISSUE_NUMBER}"
+        echo "::notice::Estimated cost: \$$ESTIMATED_COST"
