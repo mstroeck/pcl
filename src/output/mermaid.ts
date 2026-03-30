@@ -63,11 +63,20 @@ function sanitizeNodeId(id: string): string {
 }
 
 /**
- * Escape special characters in node labels
+ * Escape special characters in node labels.
+ * Mermaid treats [], (), {}, |, and # as syntax inside label strings.
  */
 function escapeLabel(label: string): string {
   return label
     .replace(/"/g, '\\"')
+    .replace(/\[/g, '&#91;')
+    .replace(/\]/g, '&#93;')
+    .replace(/\(/g, '&#40;')
+    .replace(/\)/g, '&#41;')
+    .replace(/\{/g, '&#123;')
+    .replace(/\}/g, '&#125;')
+    .replace(/\|/g, '&#124;')
+    .replace(/#/g, '&#35;')
     .replace(/\n/g, ' ')
     .slice(0, 50); // Limit length for readability
 }

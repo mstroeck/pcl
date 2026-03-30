@@ -18,18 +18,7 @@ export async function resolve(target: string, options: ResolverOptions = {}): Pr
     };
   }
 
-  // Try plugin resolvers first
-  const pluginResult = await pluginRegistry.tryResolveInput(target);
-  if (pluginResult) {
-    // Explicitly spread fields so TypeScript can verify the shape and plugin
-    // metadata is carried through to PlanInput.metadata.
-    return {
-      title: pluginResult.title,
-      description: pluginResult.description,
-      sourceType: 'plugin' as const,
-      metadata: pluginResult.metadata,
-    };
-  }
+  // Built-in resolvers run first so plugins cannot shadow core GitHub syntax.
 
   // GitHub URL (https://github.com/owner/repo/issues/123)
   // Design decision: Regex intentionally rejects URLs with extra path segments beyond /issues/123
@@ -68,6 +57,19 @@ export async function resolve(target: string, options: ResolverOptions = {}): Pr
     }
 
     return resolveFile(target);
+  }
+
+  // Plugin resolvers run after built-ins so they cannot shadow core GitHub syntax.
+  const pluginResult = await pluginRegistry.tryResolveInput(target);
+  if (pluginResult) {
+    // Explicitly spread fields so TypeScript can verify the shape and plugin
+    // metadata is carried through to PlanInput.metadata.
+    return {
+      title: pluginResult.title,
+      description: pluginResult.description,
+      sourceType: 'plugin',
+      metadata: pluginResult.metadata,
+    };
   }
 
   // Inline text

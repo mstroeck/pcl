@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { pluginRegistry } from './registry.js';
+import { setPluginType } from './plugin-type-map.js';
 import { ModelAdapter, OutputFormatter, InputResolver, ResearchProvider } from './types.js';
 
 describe('Plugin Registry', () => {
@@ -15,6 +16,7 @@ describe('Plugin Registry', () => {
         return { content: 'test', model: 'test' };
       },
     };
+    setPluginType(adapter, 'model');
 
     pluginRegistry.register(adapter);
 
@@ -30,6 +32,7 @@ describe('Plugin Registry', () => {
         return 'formatted';
       },
     };
+    setPluginType(formatter, 'formatter');
 
     pluginRegistry.register(formatter);
 
@@ -46,6 +49,7 @@ describe('Plugin Registry', () => {
         return { title: 'Test', description: 'Desc' };
       },
     };
+    setPluginType(resolver, 'resolver');
 
     pluginRegistry.register(resolver);
 
@@ -61,6 +65,7 @@ describe('Plugin Registry', () => {
         return { content: 'research' };
       },
     };
+    setPluginType(provider, 'research');
 
     pluginRegistry.register(provider);
 
@@ -76,6 +81,7 @@ describe('Plugin Registry', () => {
         return { content: 'test', model: 'test' };
       },
     };
+    setPluginType(adapter, 'model');
 
     const formatter: OutputFormatter = {
       name: 'formatter1',
@@ -83,6 +89,7 @@ describe('Plugin Registry', () => {
         return 'formatted';
       },
     };
+    setPluginType(formatter, 'formatter');
 
     pluginRegistry.registerAll([adapter, formatter]);
 
@@ -98,6 +105,7 @@ describe('Plugin Registry', () => {
         return { title: 'Linear Issue', description: 'From Linear' };
       },
     };
+    setPluginType(resolver1, 'resolver');
 
     const resolver2: InputResolver = {
       name: 'jira',
@@ -106,6 +114,7 @@ describe('Plugin Registry', () => {
         return { title: 'JIRA Issue', description: 'From JIRA' };
       },
     };
+    setPluginType(resolver2, 'resolver');
 
     pluginRegistry.registerAll([resolver1, resolver2]);
 
@@ -129,6 +138,7 @@ describe('Plugin Registry', () => {
         return { content: 'test', model: 'test' };
       },
     };
+    setPluginType(adapter, 'model');
 
     const formatter: OutputFormatter = {
       name: 'formatter1',
@@ -136,6 +146,7 @@ describe('Plugin Registry', () => {
         return 'formatted';
       },
     };
+    setPluginType(formatter, 'formatter');
 
     pluginRegistry.registerAll([adapter, formatter]);
 
@@ -154,6 +165,7 @@ describe('Plugin Registry', () => {
         return { content: 'test', model: 'test' };
       },
     };
+    setPluginType(adapter, 'model');
 
     pluginRegistry.register(adapter);
     expect(pluginRegistry.getAllModelAdapters()).toHaveLength(1);
@@ -168,5 +180,32 @@ describe('Plugin Registry', () => {
     expect(pluginRegistry.getOutputFormatter('nonexistent')).toBeUndefined();
     expect(pluginRegistry.getInputResolver('nonexistent')).toBeUndefined();
     expect(pluginRegistry.getResearchProvider('nonexistent')).toBeUndefined();
+  });
+
+  it('should throw when registering a plugin without pluginType set', () => {
+    // Plugins not loaded via loadPlugin() and not annotated with setPluginType()
+    // must be rejected to prevent silent misclassification via duck typing.
+    const unannotated: ModelAdapter = {
+      name: 'unannotated-model',
+      async execute(request) {
+        return { content: 'test', model: 'test' };
+      },
+    };
+
+    expect(() => pluginRegistry.register(unannotated)).toThrow(
+      'must be loaded via loadPlugin() or annotated with setPluginType()'
+    );
+  });
+
+  it('should throw for unknown pluginType value', () => {
+    const plugin: ModelAdapter = {
+      name: 'bad-type-plugin',
+      async execute(request) {
+        return { content: 'test', model: 'test' };
+      },
+    };
+    setPluginType(plugin, 'unknown-type');
+
+    expect(() => pluginRegistry.register(plugin)).toThrow('Unknown pluginType');
   });
 });

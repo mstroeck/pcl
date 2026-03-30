@@ -245,7 +245,7 @@ export function formatHTML(plan: ConsensusPlan, verbose: boolean = false): strin
       ${renderSummary(plan)}
       ${renderSteps(plan.steps, verbose)}
       ${renderDecisions(plan.decisions, verbose)}
-      ${renderRisks(plan.risks, verbose)}
+      ${renderRisks(plan.risks)}
       ${plan.disagreements.length > 0 ? renderDisagreements(plan) : ''}
       ${verbose ? renderModelPlans(plan) : ''}
     </div>
@@ -396,7 +396,7 @@ function renderDecisions(decisions: ConsensusDecision[], verbose: boolean): stri
   `;
 }
 
-function renderRisks(risks: ConsensusRisk[], verbose: boolean): string {
+function renderRisks(risks: ConsensusRisk[]): string {
   if (risks.length === 0) return '';
 
   const risksHtml = risks
@@ -473,7 +473,7 @@ function renderModelPlans(plan: ConsensusPlan): string {
     .map(
       (modelPlan) => `
     <div class="card">
-      <div class="card-title">${modelPlan.modelName}</div>
+      <div class="card-title">${escapeHtml(modelPlan.modelName)}</div>
       <div class="description">${escapeHtml(modelPlan.summary)}</div>
       <div class="meta">
         <div class="meta-item">

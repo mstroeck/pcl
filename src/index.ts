@@ -95,9 +95,9 @@ program
       const config = await loadConfig({
         ...profileConfig,
         models: options.models ? parseModelsOption(options.models) : profileConfig?.models,
-        depth: options.depth || profileConfig?.depth,
+        depth: options.depth ?? profileConfig?.depth ?? 'detailed',
         timeout: options.timeout ? options.timeout * 1000 : profileConfig?.timeout,
-        maxCost: options.maxCost || profileConfig?.maxCost,
+        maxCost: options.maxCost ?? profileConfig?.maxCost,
         github: (options.githubToken || process.env.GITHUB_TOKEN) ? {
           token: options.githubToken || process.env.GITHUB_TOKEN,
         } : undefined,

@@ -36,15 +36,16 @@ export async function dispatchToModelsStreaming(
   const estimate = estimateCost(models, request.systemPrompt + request.userPrompt);
   const totalEstimate = estimate.totalCost;
 
-  // Track completed models
-  let completedCount = 0;
-  let currentCost = 0;
+  // Track per-model cost in a Map to avoid shared mutable scalar state across
+  // concurrent async functions.  Each entry is written exactly once (when a
+  // model completes), then the current total is derived by summing the map.
+  const modelCosts = new Map<string, number>();
 
   // Create wrapped promises with timing and callbacks.
   // Each model is dispatched individually so we can fire per-model callbacks as
   // soon as each one finishes (true streaming progress), while still reusing the
   // full pipeline (cache + retry) from runner.ts.
-  const promises = models.map(async (modelConfig, index) => {
+  const promises = models.map(async (modelConfig) => {
     const startTime = Date.now();
 
     try {
@@ -57,15 +58,11 @@ export async function dispatchToModelsStreaming(
       const response = responses[0];
       const timingMs = Date.now() - startTime;
 
-      // Update cost estimate. Fall back to an even split of the total when the
-      // model name in the estimate doesn't match exactly (e.g. provider-prefixed).
-      completedCount++;
+      // Record this model's cost. Fall back to an even split of the total when
+      // the model name in the estimate doesn't match exactly (e.g. provider-prefixed).
       const modelEstimate = estimate.models.find((m) => m.model === modelConfig.model);
-      if (modelEstimate) {
-        currentCost += modelEstimate.estimatedCost;
-      } else {
-        currentCost += totalEstimate / models.length;
-      }
+      modelCosts.set(modelConfig.model, modelEstimate ? modelEstimate.estimatedCost : totalEstimate / models.length);
+      const currentCost = Array.from(modelCosts.values()).reduce((a, b) => a + b, 0);
 
       // Call callbacks
       if (options.onModelComplete) {
@@ -86,7 +83,8 @@ export async function dispatchToModelsStreaming(
         error: error instanceof Error ? error.message : String(error),
       };
 
-      completedCount++;
+      // No cost recorded for failed models; derive current total from successes so far.
+      const currentCost = Array.from(modelCosts.values()).reduce((a, b) => a + b, 0);
 
       if (options.onModelComplete) {
         options.onModelComplete(errorResponse, timingMs);

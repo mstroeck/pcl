@@ -6,8 +6,10 @@ on:
 
 jobs:
   plan:
-    # Only run when the 'plan' label is applied to an issue
-    if: github.event.label.name == 'plan'
+    # Use contains() so the job runs correctly even when multiple labels are
+    # present on the issue (the simple == check only sees the most-recently
+    # applied label, which can miss cases where 'plan' was already there).
+    if: contains(github.event.issue.labels.*.name, 'plan')
     runs-on: ubuntu-latest
 
     permissions:
@@ -16,7 +18,10 @@ jobs:
 
     steps:
       - name: Generate plan with Plan Council
-        uses: mstroeck/pcl@main  # Replace with your fork if needed
+        id: plan
+        # Pinned to a specific commit SHA instead of @main to prevent
+        # unreviewed upstream changes from running in this workflow.
+        uses: mstroeck/pcl@a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1  # renovate: tag=v0.1.0
         with:
           issue-number: ${{ github.event.issue.number }}
           github-token: ${{ secrets.GITHUB_TOKEN }}

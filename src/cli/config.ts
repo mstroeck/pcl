@@ -91,6 +91,7 @@ export function getProfile(profile: 'fast' | 'thorough'): Partial<PlanCouncilCon
       };
 
     case 'thorough':
+      // These are current SOTA models as of 2026. Update when newer flagships are released.
       return {
         models: [
           // claude-opus-4-6: Anthropic's Opus 4.6 flagship model (released 2025)

@@ -5,6 +5,7 @@ import {
   InputResolver,
   ResearchProvider,
 } from './types.js';
+import { getPluginType } from './plugin-type-map.js';
 
 /**
  * Global plugin registry.
@@ -20,19 +21,35 @@ class PluginRegistry {
   private researchProviders = new Map<string, ResearchProvider>();
 
   /**
-   * Register a plugin
+   * Register a plugin.
+   *
+   * Plugins must be loaded via loadPlugin() (which records the type in the
+   * WeakMap) or annotated with setPluginType() before registering.  Relying on
+   * duck typing alone can misclassify plugins that implement multiple
+   * interfaces, so we require the explicit type discriminator.
    */
   register(plugin: Plugin): void {
-    if (this.isModelAdapter(plugin)) {
-      this.modelAdapters.set(plugin.name, plugin);
-    } else if (this.isOutputFormatter(plugin)) {
-      this.outputFormatters.set(plugin.name, plugin);
-    } else if (this.isInputResolver(plugin)) {
-      this.inputResolvers.set(plugin.name, plugin);
-    } else if (this.isResearchProvider(plugin)) {
-      this.researchProviders.set(plugin.name, plugin);
-    } else {
-      throw new Error(`Unknown plugin type for plugin: ${(plugin as { name?: string }).name || 'unknown'}`);
+    const type = getPluginType(plugin);
+    if (type === undefined) {
+      throw new Error(
+        `Plugin "${plugin.name}" must be loaded via loadPlugin() or annotated with setPluginType() before registering.`
+      );
+    }
+    switch (type) {
+      case 'model':
+        this.modelAdapters.set(plugin.name, plugin as ModelAdapter);
+        break;
+      case 'formatter':
+        this.outputFormatters.set(plugin.name, plugin as OutputFormatter);
+        break;
+      case 'resolver':
+        this.inputResolvers.set(plugin.name, plugin as InputResolver);
+        break;
+      case 'research':
+        this.researchProviders.set(plugin.name, plugin as ResearchProvider);
+        break;
+      default:
+        throw new Error(`Unknown pluginType "${type}" for plugin: ${plugin.name}`);
     }
   }
 
@@ -154,32 +171,6 @@ class PluginRegistry {
     };
   }
 
-  // Type guards: prefer the explicit `pluginType` discriminator injected by the
-  // loader over duck typing, which can misclassify plugins that implement
-  // multiple interfaces.
-  private isModelAdapter(plugin: Plugin): plugin is ModelAdapter {
-    const pt = (plugin as { pluginType?: string }).pluginType;
-    if (pt !== undefined) return pt === 'model';
-    return 'execute' in plugin;
-  }
-
-  private isOutputFormatter(plugin: Plugin): plugin is OutputFormatter {
-    const pt = (plugin as { pluginType?: string }).pluginType;
-    if (pt !== undefined) return pt === 'formatter';
-    return 'format' in plugin;
-  }
-
-  private isInputResolver(plugin: Plugin): plugin is InputResolver {
-    const pt = (plugin as { pluginType?: string }).pluginType;
-    if (pt !== undefined) return pt === 'resolver';
-    return 'pattern' in plugin && 'resolve' in plugin;
-  }
-
-  private isResearchProvider(plugin: Plugin): plugin is ResearchProvider {
-    const pt = (plugin as { pluginType?: string }).pluginType;
-    if (pt !== undefined) return pt === 'research';
-    return 'research' in plugin;
-  }
 }
 
 // Singleton instance

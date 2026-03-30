@@ -1,26 +1,24 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { writeFile, mkdir, rm } from 'fs/promises';
 import { join } from 'path';
-import { tmpdir } from 'os';
 import { loadPlugin } from './loader.js';
 import { PluginConfig } from './types.js';
 
 describe('Plugin Loader', () => {
-  let testDir: string;
+  // Write test plugins inside the project's plugins/ directory (the only
+  // allowed local-file path) so the path restriction is satisfied.
+  const pluginsDir = join(process.cwd(), 'plugins', `test-${Date.now()}`);
 
   beforeEach(async () => {
-    // Create temporary directory for test plugins
-    testDir = join(tmpdir(), `pcl-test-${Date.now()}`);
-    await mkdir(testDir, { recursive: true });
+    await mkdir(pluginsDir, { recursive: true });
   });
 
   afterEach(async () => {
-    // Always clean up the temp directory, even if the test fails
-    await rm(testDir, { recursive: true, force: true });
+    await rm(pluginsDir, { recursive: true, force: true });
   });
 
   it('should load a valid model adapter plugin', async () => {
-    const pluginPath = join(testDir, 'test-model.js');
+    const pluginPath = join(pluginsDir, 'test-model.js');
     await writeFile(
       pluginPath,
       `
@@ -50,7 +48,7 @@ describe('Plugin Loader', () => {
   });
 
   it('should load a valid output formatter plugin', async () => {
-    const pluginPath = join(testDir, 'test-formatter.js');
+    const pluginPath = join(pluginsDir, 'test-formatter.js');
     await writeFile(
       pluginPath,
       `
@@ -78,7 +76,7 @@ describe('Plugin Loader', () => {
   });
 
   it('should load a valid input resolver plugin', async () => {
-    const pluginPath = join(testDir, 'test-resolver.js');
+    const pluginPath = join(pluginsDir, 'test-resolver.js');
     await writeFile(
       pluginPath,
       `
@@ -110,7 +108,7 @@ describe('Plugin Loader', () => {
   });
 
   it('should load a valid research provider plugin', async () => {
-    const pluginPath = join(testDir, 'test-research.js');
+    const pluginPath = join(pluginsDir, 'test-research.js');
     await writeFile(
       pluginPath,
       `
@@ -140,7 +138,7 @@ describe('Plugin Loader', () => {
   });
 
   it('should pass options to plugin factory', async () => {
-    const pluginPath = join(testDir, 'test-options.js');
+    const pluginPath = join(pluginsDir, 'test-options.js');
     await writeFile(
       pluginPath,
       `
@@ -172,17 +170,18 @@ describe('Plugin Loader', () => {
   });
 
   it('should throw error for missing plugin file', async () => {
+    // Path is inside the allowed plugins/ dir but the file does not exist.
     const config: PluginConfig = {
       type: 'model',
       name: 'missing',
-      path: './nonexistent-plugin.js',
+      path: join(pluginsDir, 'nonexistent-plugin.js'),
     };
 
     await expect(loadPlugin(config)).rejects.toThrow('Plugin file not found');
   });
 
   it('should throw error for plugin without default export', async () => {
-    const pluginPath = join(testDir, 'no-export.js');
+    const pluginPath = join(pluginsDir, 'no-export.js');
     await writeFile(
       pluginPath,
       `
@@ -197,5 +196,15 @@ describe('Plugin Loader', () => {
     };
 
     await expect(loadPlugin(config)).rejects.toThrow('must export a default function');
+  });
+
+  it('should reject plugin paths outside node_modules/ or plugins/', async () => {
+    const config: PluginConfig = {
+      type: 'model',
+      name: 'escaped',
+      path: '/etc/passwd',
+    };
+
+    await expect(loadPlugin(config)).rejects.toThrow('is outside allowed directories');
   });
 });

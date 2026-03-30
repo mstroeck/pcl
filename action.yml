@@ -47,14 +47,18 @@ inputs:
 outputs:
   plan-summary:
     description: 'Summary of the generated plan'
+    value: ''  # Not yet captured from a step; add when plan-summary output is implemented
   estimated-cost:
     description: 'Estimated cost of the planning operation in USD'
+    value: ${{ steps.estimate.outputs.estimated-cost }}
 
 runs:
   using: 'composite'
   steps:
     - name: Setup Node.js
-      uses: actions/setup-node@v4
+      # Pinned to commit SHA (actions/setup-node v4.4.0) rather than a moving
+      # tag so unreviewed upstream changes cannot run in this workflow.
+      uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4.4.0
       with:
         node-version: '20'
 
@@ -63,8 +67,9 @@ runs:
       run: |
         npm install -g plan-council@0.1.0
 
-    # Mask secrets BEFORE writing them to GITHUB_ENV so they are never logged in plaintext.
-    # Inputs are passed via env: to avoid shell injection from ${{ }} inline interpolation.
+    # Mask secrets BEFORE they are used anywhere so they are never logged in
+    # plaintext.  Inputs are passed via env: to avoid inline ${{ }} expansion
+    # inside run: scripts (which would be visible in the workflow definition).
     - name: Mask secrets in logs
       shell: bash
       env:
@@ -78,31 +83,11 @@ runs:
         [ -n "$INPUT_GOOGLE_KEY" ] && echo "::add-mask::$INPUT_GOOGLE_KEY"
         [ -n "$INPUT_PERPLEXITY_KEY" ] && echo "::add-mask::$INPUT_PERPLEXITY_KEY"
 
-    - name: Set API keys
-      shell: bash
-      env:
-        INPUT_ANTHROPIC_KEY: ${{ inputs.anthropic-api-key }}
-        INPUT_OPENAI_KEY: ${{ inputs.openai-api-key }}
-        INPUT_GOOGLE_KEY: ${{ inputs.google-api-key }}
-        INPUT_PERPLEXITY_KEY: ${{ inputs.perplexity-api-key }}
-      run: |
-        if [ -n "$INPUT_ANTHROPIC_KEY" ]; then
-          echo "ANTHROPIC_API_KEY=$INPUT_ANTHROPIC_KEY" >> "$GITHUB_ENV"
-        fi
-        if [ -n "$INPUT_OPENAI_KEY" ]; then
-          echo "OPENAI_API_KEY=$INPUT_OPENAI_KEY" >> "$GITHUB_ENV"
-        fi
-        if [ -n "$INPUT_GOOGLE_KEY" ]; then
-          echo "GOOGLE_API_KEY=$INPUT_GOOGLE_KEY" >> "$GITHUB_ENV"
-        fi
-        if [ -n "$INPUT_PERPLEXITY_KEY" ]; then
-          echo "PERPLEXITY_API_KEY=$INPUT_PERPLEXITY_KEY" >> "$GITHUB_ENV"
-        fi
-
     - name: Estimate cost
       id: estimate
       shell: bash
       env:
+        # Pass non-secret inputs via env: (not inline) to prevent shell injection.
         INPUT_ISSUE_NUMBER: ${{ inputs.issue-number }}
         INPUT_REPO: ${{ github.repository }}
         INPUT_MODELS: ${{ inputs.models }}
@@ -110,34 +95,53 @@ runs:
         INPUT_RESEARCH: ${{ inputs.research }}
         INPUT_RESEARCH_PROVIDER: ${{ inputs.research-provider }}
         INPUT_RESEARCH_MODEL: ${{ inputs.research-model }}
+        # API keys passed per-step so they never touch GITHUB_ENV plaintext.
+        ANTHROPIC_API_KEY: ${{ inputs.anthropic-api-key }}
+        OPENAI_API_KEY: ${{ inputs.openai-api-key }}
+        GOOGLE_API_KEY: ${{ inputs.google-api-key }}
+        PERPLEXITY_API_KEY: ${{ inputs.perplexity-api-key }}
       run: |
-        ESTIMATE_CMD="pcl plan ${INPUT_REPO}#${INPUT_ISSUE_NUMBER} --estimate"
+        # Validate inputs before use to prevent shell injection.
+        if ! [[ "$INPUT_ISSUE_NUMBER" =~ ^[0-9]+$ ]]; then
+          echo "::error::issue-number must be numeric, got: '$INPUT_ISSUE_NUMBER'"
+          exit 1
+        fi
+        if [ -n "$INPUT_MODELS" ] && ! [[ "$INPUT_MODELS" =~ ^[a-zA-Z0-9._,\-]+$ ]]; then
+          echo "::error::models contains invalid characters (allowed: a-zA-Z0-9._,-)"
+          exit 1
+        fi
+
+        # Build command as a bash array to avoid word-splitting on variable values.
+        ESTIMATE_CMD=(pcl plan "${INPUT_REPO}#${INPUT_ISSUE_NUMBER}" --estimate)
 
         if [ -n "$INPUT_MODELS" ]; then
-          ESTIMATE_CMD="$ESTIMATE_CMD --models $INPUT_MODELS"
+          ESTIMATE_CMD+=("--models" "$INPUT_MODELS")
         fi
 
         if [ -n "$INPUT_DEPTH" ]; then
-          ESTIMATE_CMD="$ESTIMATE_CMD --depth $INPUT_DEPTH"
+          ESTIMATE_CMD+=("--depth" "$INPUT_DEPTH")
         fi
 
         if [ "$INPUT_RESEARCH" = "true" ]; then
-          ESTIMATE_CMD="$ESTIMATE_CMD --research"
+          ESTIMATE_CMD+=("--research")
           if [ -n "$INPUT_RESEARCH_PROVIDER" ]; then
-            ESTIMATE_CMD="$ESTIMATE_CMD --research-provider $INPUT_RESEARCH_PROVIDER"
+            ESTIMATE_CMD+=("--research-provider" "$INPUT_RESEARCH_PROVIDER")
           fi
           if [ -n "$INPUT_RESEARCH_MODEL" ]; then
-            ESTIMATE_CMD="$ESTIMATE_CMD --research-model $INPUT_RESEARCH_MODEL"
+            ESTIMATE_CMD+=("--research-model" "$INPUT_RESEARCH_MODEL")
           fi
         fi
 
-        echo "Running: $ESTIMATE_CMD"
-        ESTIMATE_OUTPUT=$($ESTIMATE_CMD)
+        echo "Running: pcl plan '${INPUT_REPO}#${INPUT_ISSUE_NUMBER}' --estimate [...]"
+        ESTIMATE_OUTPUT=$("${ESTIMATE_CMD[@]}")
         echo "$ESTIMATE_OUTPUT"
 
-        # Extract cost from output (format: "Total: $X.XXXX")
-        # Use POSIX-compatible grep -o piped to grep -o instead of grep -P
-        COST=$(echo "$ESTIMATE_OUTPUT" | grep -o 'Total: \$[0-9.]*' | grep -o '[0-9.]*$' || echo "0")
+        # NOTE: This parses human-readable output from formatCostEstimate().
+        # If the output format changes (e.g. internationalised decimal separators),
+        # this will silently fall back to "0". A structured --json flag would be
+        # more robust; tracked in issue #TODO.
+        # Use [0-9]+\.[0-9]+ to reject malformed numbers such as "1..2" or ".5".
+        COST=$(echo "$ESTIMATE_OUTPUT" | grep -oE 'Total: \$[0-9]+\.[0-9]+' | grep -oE '[0-9]+\.[0-9]+' || echo "0")
         echo "estimated-cost=$COST" >> "$GITHUB_OUTPUT"
         echo "ESTIMATED_COST=$COST" >> "$GITHUB_ENV"
 
@@ -177,8 +181,9 @@ runs:
     - name: Generate and post plan
       shell: bash
       env:
-        # Pass token via env var so it is never visible in the process list
+        # Pass token via env var so it is never visible in the process list.
         GITHUB_TOKEN: ${{ inputs.github-token }}
+        # Pass non-secret inputs via env: (not inline) to prevent shell injection.
         INPUT_ISSUE_NUMBER: ${{ inputs.issue-number }}
         INPUT_REPO: ${{ github.repository }}
         INPUT_MODELS: ${{ inputs.models }}
@@ -186,29 +191,45 @@ runs:
         INPUT_RESEARCH: ${{ inputs.research }}
         INPUT_RESEARCH_PROVIDER: ${{ inputs.research-provider }}
         INPUT_RESEARCH_MODEL: ${{ inputs.research-model }}
+        # API keys passed per-step so they never touch GITHUB_ENV plaintext.
+        ANTHROPIC_API_KEY: ${{ inputs.anthropic-api-key }}
+        OPENAI_API_KEY: ${{ inputs.openai-api-key }}
+        GOOGLE_API_KEY: ${{ inputs.google-api-key }}
+        PERPLEXITY_API_KEY: ${{ inputs.perplexity-api-key }}
       run: |
-        PLAN_CMD="pcl plan ${INPUT_REPO}#${INPUT_ISSUE_NUMBER} --post"
+        # Validate inputs before use to prevent shell injection.
+        if ! [[ "$INPUT_ISSUE_NUMBER" =~ ^[0-9]+$ ]]; then
+          echo "::error::issue-number must be numeric, got: '$INPUT_ISSUE_NUMBER'"
+          exit 1
+        fi
+        if [ -n "$INPUT_MODELS" ] && ! [[ "$INPUT_MODELS" =~ ^[a-zA-Z0-9._,\-]+$ ]]; then
+          echo "::error::models contains invalid characters (allowed: a-zA-Z0-9._,-)"
+          exit 1
+        fi
+
+        # Build command as a bash array to avoid word-splitting on variable values.
+        PLAN_CMD=(pcl plan "${INPUT_REPO}#${INPUT_ISSUE_NUMBER}" --post)
 
         if [ -n "$INPUT_MODELS" ]; then
-          PLAN_CMD="$PLAN_CMD --models $INPUT_MODELS"
+          PLAN_CMD+=("--models" "$INPUT_MODELS")
         fi
 
         if [ -n "$INPUT_DEPTH" ]; then
-          PLAN_CMD="$PLAN_CMD --depth $INPUT_DEPTH"
+          PLAN_CMD+=("--depth" "$INPUT_DEPTH")
         fi
 
         if [ "$INPUT_RESEARCH" = "true" ]; then
-          PLAN_CMD="$PLAN_CMD --research"
+          PLAN_CMD+=("--research")
           if [ -n "$INPUT_RESEARCH_PROVIDER" ]; then
-            PLAN_CMD="$PLAN_CMD --research-provider $INPUT_RESEARCH_PROVIDER"
+            PLAN_CMD+=("--research-provider" "$INPUT_RESEARCH_PROVIDER")
           fi
           if [ -n "$INPUT_RESEARCH_MODEL" ]; then
-            PLAN_CMD="$PLAN_CMD --research-model $INPUT_RESEARCH_MODEL"
+            PLAN_CMD+=("--research-model" "$INPUT_RESEARCH_MODEL")
           fi
         fi
 
-        echo "Running: pcl plan ${INPUT_REPO}#${INPUT_ISSUE_NUMBER} --post [...]"
-        $PLAN_CMD
+        echo "Running: pcl plan '${INPUT_REPO}#${INPUT_ISSUE_NUMBER}' --post [...]"
+        "${PLAN_CMD[@]}"
 
     - name: Output summary
       shell: bash

@@ -102,6 +102,7 @@ async function checkAnthropic(): Promise<DoctorResult> {
       provider: 'Anthropic',
       status: 'ok',
       message: 'Connected successfully',
+      // Known models as of 2026; update when new models are released.
       models: ['claude-opus-4-6', 'claude-3-7-sonnet-20250219', 'claude-3-5-sonnet-20241022', 'claude-3-haiku-20240307'],
     };
   } catch (error) {
@@ -138,6 +139,7 @@ async function checkOpenAI(): Promise<DoctorResult> {
       provider: 'OpenAI',
       status: 'ok',
       message: 'Connected successfully',
+      // Known models as of 2026; update when new models are released.
       models: ['gpt-5.4', 'gpt-4o', 'gpt-4o-mini', 'o1', 'o1-mini', 'o3-mini'],
     };
   } catch (error) {
@@ -174,6 +176,7 @@ async function checkGoogle(): Promise<DoctorResult> {
       provider: 'Google',
       status: 'ok',
       message: 'Connected successfully',
+      // Known models as of 2026; update when new models are released.
       models: ['gemini-2.5-pro-exp-03-25', 'gemini-2.0-flash-thinking-exp-01-21', 'gemini-2.0-flash-exp'],
     };
   } catch (error) {
@@ -211,6 +214,7 @@ async function checkPerplexity(): Promise<DoctorResult> {
       provider: 'Perplexity (Research)',
       status: 'ok',
       message: 'Connected successfully',
+      // Known models as of 2026; update when new models are released.
       models: ['sonar-deep-research', 'sonar-reasoning', 'sonar'],
     };
   } catch (error) {

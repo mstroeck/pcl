@@ -1,7 +1,8 @@
 import { pathToFileURL } from 'url';
-import { resolve as resolvePath, isAbsolute } from 'path';
+import { resolve as resolvePath, isAbsolute, sep as pathSep } from 'path';
 import { existsSync } from 'fs';
 import { Plugin, PluginConfig, PluginFactory } from './types.js';
+import { setPluginType } from './plugin-type-map.js';
 
 /**
  * Load a plugin from a module path.
@@ -41,9 +42,9 @@ export async function loadPlugin(config: PluginConfig): Promise<Plugin> {
     // Validate plugin has required properties
     validatePlugin(plugin, config.type);
 
-    // Annotate with explicit type discriminator so the registry can classify
-    // the plugin reliably without relying solely on duck typing.
-    (plugin as unknown as Record<string, unknown>).pluginType = config.type;
+    // Record the plugin type in a WeakMap so the registry can classify it
+    // reliably without mutating the plugin object or relying on duck typing.
+    setPluginType(plugin, config.type);
 
     // Optional: run plugin validation
     if ('validate' in plugin && typeof plugin.validate === 'function') {
@@ -60,12 +61,29 @@ export async function loadPlugin(config: PluginConfig): Promise<Plugin> {
 }
 
 /**
- * Resolve plugin path to a valid module specifier
+ * Resolve plugin path to a valid module specifier.
+ *
+ * SECURITY: Local file paths (absolute or relative) are restricted to the
+ * node_modules/ and plugins/ directories within the current working directory.
+ * This prevents accidental loading of arbitrary system files and limits the
+ * blast radius of a misconfigured plugin path.  npm package names are
+ * validated separately by validateNpmPackageName().
  */
 function resolvePluginPath(path: string): string {
   // If it's an absolute path or starts with ./ or ../, treat as local file
   if (isAbsolute(path) || path.startsWith('./') || path.startsWith('../')) {
     const absolutePath = isAbsolute(path) ? path : resolvePath(process.cwd(), path);
+
+    // Restrict local plugins to node_modules/ or plugins/ within cwd.
+    const cwd = process.cwd();
+    const nodeModulesDir = resolvePath(cwd, 'node_modules') + pathSep;
+    const pluginsDir = resolvePath(cwd, 'plugins') + pathSep;
+    if (!absolutePath.startsWith(nodeModulesDir) && !absolutePath.startsWith(pluginsDir)) {
+      throw new Error(
+        `Plugin path "${path}" is outside allowed directories. ` +
+        `Local plugins must reside in node_modules/ or plugins/ within the working directory.`
+      );
+    }
 
     if (!existsSync(absolutePath)) {
       throw new Error(`Plugin file not found: ${absolutePath}`);
