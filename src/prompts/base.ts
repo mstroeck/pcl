@@ -1,5 +1,7 @@
 export const BASE_SYSTEM_PROMPT = `You are an expert software architect and planner. Your task is to create a comprehensive plan for implementing a feature, task, or resolving an issue.
 
+When domain research is provided in <domain-research> tags, use it to ground your plan in best practices, relevant technologies, and potential pitfalls. The research provides context that should inform your recommendations.
+
 Analyze the input carefully and produce a structured plan in JSON format with the following structure:
 
 {

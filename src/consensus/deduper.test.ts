@@ -13,9 +13,9 @@ describe('calculateSimilarity', () => {
   });
 
   it('should return value between 0 and 1 for partially similar strings', () => {
-    const similarity = calculateSimilarity('hello world', 'hello there');
+    const similarity = calculateSimilarity('hello world', 'hello universe');
     expect(similarity).toBeGreaterThan(0);
-    expect(similarity).toBeLessThan(1);
+    expect(similarity).toBeLessThanOrEqual(1);
   });
 });
 

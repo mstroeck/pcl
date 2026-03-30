@@ -1,61 +1,28 @@
 import { Step, Decision, Risk } from './types.js';
+import { calculateSimilarity as calcSimilarity, SimilarityAlgorithm } from './similarity.js';
 
-// Cache for tokenized texts to avoid re-tokenizing
-// NOTE: This cache is unbounded by design for CLI use (single-threaded, short-lived process).
-// Not thread-safe - intended for single-threaded CLI usage only.
-// NOTE: Using long strings as Map keys is memory-inefficient but acceptable for CLI tool scope.
-const tokenCache = new Map<string, Set<string>>();
-const MAX_CACHE_SIZE = 1000;
+// Default similarity algorithm
+const DEFAULT_ALGORITHM: SimilarityAlgorithm = 'hybrid';
 
+export function calculateSimilarity(
+  text1: string,
+  text2: string,
+  algorithm: SimilarityAlgorithm = DEFAULT_ALGORITHM
+): number {
+  return calcSimilarity(text1, text2, algorithm);
+}
+
+// For backwards compatibility with tests
 export function clearTokenCache(): void {
-  tokenCache.clear();
-}
-
-function getTokenSet(text: string): Set<string> {
-  let tokenSet = tokenCache.get(text);
-  if (!tokenSet) {
-    tokenSet = new Set(tokenize(text));
-
-    // Limit cache size to prevent unbounded growth
-    if (tokenCache.size >= MAX_CACHE_SIZE) {
-      // Clear oldest half of cache when limit exceeded
-      const keysToDelete = Array.from(tokenCache.keys()).slice(0, Math.floor(MAX_CACHE_SIZE / 2));
-      for (const key of keysToDelete) {
-        tokenCache.delete(key);
-      }
-    }
-
-    tokenCache.set(text, tokenSet);
-  }
-  return tokenSet;
-}
-
-export function calculateSimilarity(text1: string, text2: string): number {
-  const words1 = getTokenSet(text1);
-  const words2 = getTokenSet(text2);
-
-  const intersection = new Set([...words1].filter((w) => words2.has(w)));
-  const union = new Set([...words1, ...words2]);
-
-  // Handle edge case: both texts empty (would produce NaN)
-  if (union.size === 0) return 1.0;
-
-  return intersection.size / union.size;
-}
-
-function tokenize(text: string): string[] {
-  return text
-    .toLowerCase()
-    .replace(/[^\w\s]/g, ' ')
-    .split(/\s+/)
-    .filter((w) => w.length > 2);
+  // No-op - similarity module handles its own state
 }
 
 // Generic grouping function
 function groupSimilarItems<T>(
   items: Array<{ item: T; modelName: string }>,
   threshold: number,
-  getTextForComparison: (item: T) => string
+  getTextForComparison: (item: T) => string,
+  algorithm: SimilarityAlgorithm = DEFAULT_ALGORITHM
 ): Array<{ items: Array<{ item: T; modelName: string }> }> {
   const groups: Array<{ items: Array<{ item: T; modelName: string }> }> = [];
 
@@ -66,7 +33,8 @@ function groupSimilarItems<T>(
       const representative = group.items[0].item;
       const similarity = calculateSimilarity(
         getTextForComparison(representative),
-        getTextForComparison(itemWithModel.item)
+        getTextForComparison(itemWithModel.item),
+        algorithm
       );
 
       if (similarity >= threshold) {
@@ -91,12 +59,14 @@ export interface StepGroup {
 
 export function groupSimilarSteps(
   stepsWithModels: Array<{ step: Step; modelName: string }>,
-  threshold: number
+  threshold: number,
+  algorithm: SimilarityAlgorithm = DEFAULT_ALGORITHM
 ): StepGroup[] {
   const genericGroups = groupSimilarItems(
     stepsWithModels.map(s => ({ item: s.step, modelName: s.modelName })),
     threshold,
-    (step) => step.title + ' ' + step.description
+    (step) => step.title + ' ' + step.description,
+    algorithm
   );
 
   return genericGroups.map(g => {
@@ -108,7 +78,7 @@ export function groupSimilarSteps(
     // Exclude the representative (index 0) from the average to avoid self-comparison inflation
     for (let i = 1; i < g.items.length; i++) {
       const itemText = g.items[i].item.title + ' ' + g.items[i].item.description;
-      totalSimilarity += calculateSimilarity(representativeText, itemText);
+      totalSimilarity += calculateSimilarity(representativeText, itemText, algorithm);
     }
     // If only one item, similarity is 1.0; otherwise average the non-representative items
     const avgSimilarity = g.items.length > 1 ? totalSimilarity / (g.items.length - 1) : 1.0;
@@ -126,12 +96,14 @@ export interface DecisionGroup {
 
 export function groupSimilarDecisions(
   decisionsWithModels: Array<{ decision: Decision; modelName: string }>,
-  threshold: number
+  threshold: number,
+  algorithm: SimilarityAlgorithm = DEFAULT_ALGORITHM
 ): DecisionGroup[] {
   const genericGroups = groupSimilarItems(
     decisionsWithModels.map(d => ({ item: d.decision, modelName: d.modelName })),
     threshold,
-    (decision) => decision.question
+    (decision) => decision.question,
+    algorithm
   );
 
   return genericGroups.map(g => ({
@@ -145,12 +117,14 @@ export interface RiskGroup {
 
 export function groupSimilarRisks(
   risksWithModels: Array<{ risk: Risk; modelName: string }>,
-  threshold: number
+  threshold: number,
+  algorithm: SimilarityAlgorithm = DEFAULT_ALGORITHM
 ): RiskGroup[] {
   const genericGroups = groupSimilarItems(
     risksWithModels.map(r => ({ item: r.risk, modelName: r.modelName })),
     threshold,
-    (risk) => risk.description
+    (risk) => risk.description,
+    algorithm
   );
 
   return genericGroups.map(g => ({

@@ -3,12 +3,16 @@ import { AnthropicAdapter } from './anthropic.js';
 import { OpenAIAdapter } from './openai.js';
 import { GoogleAdapter } from './google.js';
 import { ModelAdapter, PlanRequest, PlanResponse } from './adapter.js';
+import { generateCacheKey, getFromCache, setInCache } from '../cache/index.js';
 
 export async function dispatchToModels(
   models: ModelConfig[],
-  request: PlanRequest
+  request: PlanRequest,
+  options?: { useCache?: boolean; cacheTTL?: number }
 ): Promise<PlanResponse[]> {
-  const promises = models.map((modelConfig) => dispatchToModel(modelConfig, request));
+  const promises = models.map((modelConfig) =>
+    dispatchToModel(modelConfig, request, options)
+  );
   const results = await Promise.allSettled(promises);
 
   return results.map((result, index) => {
@@ -29,8 +33,33 @@ export async function dispatchToModels(
 
 async function dispatchToModel(
   modelConfig: ModelConfig,
-  request: PlanRequest
+  request: PlanRequest,
+  options?: { useCache?: boolean; cacheTTL?: number }
 ): Promise<PlanResponse> {
+  const useCache = options?.useCache ?? true;
+  const cacheTTL = options?.cacheTTL ?? 3600; // 1 hour default
+
+  // Generate cache key from request + model config (including provider)
+  const cacheKey = generateCacheKey(
+    request.systemPrompt,
+    request.userPrompt,
+    modelConfig.provider,
+    modelConfig.model,
+    JSON.stringify({
+      maxTokens: modelConfig.maxTokens,
+      temperature: modelConfig.temperature,
+    })
+  );
+
+  // Try cache first
+  if (useCache) {
+    const cached = await getFromCache<PlanResponse>(cacheKey, cacheTTL);
+    if (cached) {
+      return { ...cached, cached: true };
+    }
+  }
+
+  // Cache miss - execute request
   const adapter = createAdapter(modelConfig);
 
   const requestWithConfig: PlanRequest = {
@@ -40,7 +69,14 @@ async function dispatchToModel(
     timeout: modelConfig.timeout || request.timeout,
   };
 
-  return retryWithBackoff(() => adapter.execute(requestWithConfig), 3);
+  const response = await retryWithBackoff(() => adapter.execute(requestWithConfig), 3);
+
+  // Cache the response
+  if (useCache) {
+    await setInCache(cacheKey, response, cacheTTL);
+  }
+
+  return response;
 }
 
 function createAdapter(modelConfig: ModelConfig): ModelAdapter {
